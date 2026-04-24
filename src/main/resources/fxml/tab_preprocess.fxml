@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.chart.*?>
+
+<VBox xmlns="http://javafx.com/javafx/11" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.medical.ml.ui.controller.PreprocessTabController"
+      spacing="8" style="-fx-padding: 10;">
+
+    <HBox spacing="10" alignment="CENTER_LEFT">
+        <Button text="開啟資料庫 (CSV)..." onAction="#handleOpenFile" prefWidth="150" style="-fx-font-weight: bold;"/>
+        <Region HBox.hgrow="ALWAYS" />
+        <Button text="下載合併後的資料..." onAction="#handleSaveCSV" prefWidth="150" style="-fx-base: #e1f5fe;"/>
+    </HBox>
+
+    <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-border-color: #ccc; -fx-padding: 8;">
+        <Label text="資料處理 (Filter)" style="-fx-font-weight: bold;"/>
+        <Button text="選擇" onAction="#handleChooseFilter"/>
+        <TextField fx:id="txtCurrentFilter" text="無" editable="false" HBox.hgrow="ALWAYS" style="-fx-background-color: #fff; -fx-border-color: #ccc;"/>
+        <Button text="套用" onAction="#handleApplyFilter"/>
+    </HBox>
+
+    <SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.4">
+        <!-- Left Panel -->
+        <VBox spacing="10" style="-fx-padding: 5;">
+            <!-- Current Relation -->
+            <VBox spacing="5" style="-fx-border-color: #ccc; -fx-padding: 15 5 5 5;">
+                <Label text="當前資料集" style="-fx-translate-y: -22; -fx-background-color: #f4f4f4; -fx-padding: 0 5;"/>
+                <VBox spacing="5" style="-fx-translate-y: -15; -fx-padding: 0 5;">
+                    <Label text="匯入檔案紀錄 (Relation):"/>
+                    <TextArea fx:id="txtRelationName" text="無" editable="false" wrapText="true" prefHeight="60" style="-fx-control-inner-background: #fcfcfc;"/>
+                    <HBox spacing="20">
+                        <HBox spacing="5"><Label text="資料筆數 (Instances):"/><Label fx:id="lblInstancesCount" text="0" style="-fx-font-weight: bold;"/></HBox>
+                        <HBox spacing="5"><Label text="欄位數量 (Attributes):"/><Label fx:id="lblAttributesCount" text="0" style="-fx-font-weight: bold;"/></HBox>
+                    </HBox>
+                </VBox>
+            </VBox>
+            
+            <!-- Attributes List -->
+            <VBox style="-fx-border-color: #ccc; -fx-padding: 15 5 5 5;" VBox.vgrow="ALWAYS">
+                <Label text="所有欄位清單" style="-fx-translate-y: -22; -fx-background-color: #f4f4f4; -fx-padding: 0 5;"/>
+                <TableView fx:id="tblAttributes" VBox.vgrow="ALWAYS" style="-fx-translate-y: -10;">
+                    <columns>
+                        <TableColumn fx:id="colAttrCheck" prefWidth="30" sortable="false"/>
+                        <TableColumn fx:id="colAttrNo" text="編號" prefWidth="40"/>
+                        <TableColumn fx:id="colAttrName" text="名稱" prefWidth="250"/>
+                    </columns>
+                </TableView>
+                <HBox spacing="5" alignment="CENTER" style="-fx-padding: 0 0 5 0; -fx-translate-y: -10;">
+                    <Button text="全選" onAction="#handleSelectAllAttr" prefWidth="60"/>
+                    <Button text="全不選" onAction="#handleSelectNoneAttr" prefWidth="60"/>
+                    <Button text="反選" onAction="#handleInvertAttrSelection" prefWidth="60"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Button text="刪除所選" onAction="#handleRemoveSelectedAttr" prefWidth="80"/>
+                </HBox>
+            </VBox>
+        </VBox>
+
+        <!-- Right Panel -->
+        <VBox spacing="5" style="-fx-padding: 5;">
+            <SplitPane orientation="VERTICAL" VBox.vgrow="ALWAYS" dividerPositions="0.4">
+                <!-- Selected Attribute -->
+                <VBox style="-fx-border-color: #ccc; -fx-padding: 15 5 5 5;">
+                    <Label text="選取欄位的詳細資訊" style="-fx-translate-y: -22; -fx-background-color: #f4f4f4; -fx-padding: 0 5;"/>
+                    <GridPane hgap="10" vgap="5" style="-fx-translate-y: -15;">
+                        <Label text="名稱:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                        <Label fx:id="lblSelectedAttrName" text="無" GridPane.columnIndex="1" GridPane.rowIndex="0" style="-fx-font-weight: bold;"/>
+                        <Label text="型態:" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                        <Label fx:id="lblSelectedAttrType" text="無" GridPane.columnIndex="3" GridPane.rowIndex="0"/>
+                        
+                        <Label text="缺失值 (Missing):" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                        <Label fx:id="lblSelectedAttrMissing" text="0 (0%)" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <Label text="獨立值 (Distinct):" GridPane.columnIndex="2" GridPane.rowIndex="1"/>
+                        <Label fx:id="lblSelectedAttrDistinct" text="0" GridPane.columnIndex="3" GridPane.rowIndex="1"/>
+                        <Label text="唯一值 (Unique):" GridPane.columnIndex="4" GridPane.rowIndex="1"/>
+                        <Label fx:id="lblSelectedAttrUnique" text="0 (0%)" GridPane.columnIndex="5" GridPane.rowIndex="1"/>
+                    </GridPane>
+                    <TableView fx:id="tblStats" VBox.vgrow="ALWAYS" prefHeight="130" style="-fx-translate-y: -10;">
+                        <columns>
+                            <TableColumn fx:id="colStatsNo" text="編號" prefWidth="40"/>
+                            <TableColumn fx:id="colStatsLabel" text="標籤" prefWidth="120"/>
+                            <TableColumn fx:id="colStatsCount" text="數量 / 數值" prefWidth="150"/>
+                            <TableColumn fx:id="colStatsWeight" text="權重" prefWidth="100"/>
+                        </columns>
+                    </TableView>
+                </VBox>
+                
+                <VBox style="-fx-border-color: #ccc; -fx-padding: 5;" VBox.vgrow="ALWAYS">
+                     <BarChart fx:id="chartHistogram" VBox.vgrow="ALWAYS" legendVisible="false" animated="false" title="數據分佈直方圖">
+                         <xAxis><CategoryAxis fx:id="xAxis" /></xAxis>
+                         <yAxis><NumberAxis fx:id="yAxis" /></yAxis>
+                     </BarChart>
+                </VBox>
+            </SplitPane>
+        </VBox>
+    </SplitPane>
+</VBox>

@@ -1,0 +1,388 @@
+package com.medical.ml.ui.controller;
+
+import com.medical.ml.ml.algorithm.MLAlgorithm;
+import com.medical.ml.ml.factory.AlgorithmFactory;
+import com.medical.ml.service.ExportService;
+import com.medical.ml.service.WekaService;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.concurrent.Task;
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.scene.control.*;
+import javafx.stage.FileChooser;
+import org.springframework.stereotype.Component;
+import weka.classifiers.Evaluation;
+import weka.core.Instances;
+
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
+import java.util.Random;
+
+@Component
+public class ClassifyTabController {
+
+    @FXML private TextField txtCurrentClassifier;
+    @FXML private ToggleGroup tgTestOptions;
+    @FXML private RadioButton rbUseTraining;
+    @FXML private RadioButton rbSuppliedTest;
+    @FXML private RadioButton rbCrossValidation;
+    @FXML private TextField txtFolds;
+    @FXML private RadioButton rbPercentageSplit;
+    @FXML private TextField txtSplitRatio;
+    
+    @FXML private ComboBox<String> comboTargetClass;
+    @FXML private Button btnStart;
+    @FXML private Button btnStop;
+    
+    @FXML private ListView<String> lvResultList;
+    @FXML private TextArea txtClassifierOutput;
+
+    private final WekaService wekaService;
+    private final AlgorithmFactory algorithmFactory;
+    private final ExportService exportService;
+    private final MainController mainController;
+    
+    // Store results
+    // ResultEntry is now globally accessible via WekaService.ResultEntry
+
+    public ClassifyTabController(WekaService wekaService, AlgorithmFactory algorithmFactory, ExportService exportService, MainController mainController) {
+        this.wekaService = wekaService;
+        this.algorithmFactory = algorithmFactory;
+        this.exportService = exportService;
+        this.mainController = mainController;
+    }
+
+    @FXML
+    public void initialize() {
+        // Removed local Context Menu for saving/loading since it's now in Predict Tab
+        
+        wekaService.getTrainingHistory().addListener((javafx.collections.ListChangeListener.Change<? extends WekaService.ResultEntry> c) -> {
+            while (c.next()) {
+                if (c.wasAdded()) {
+                    for (WekaService.ResultEntry entry : c.getAddedSubList()) {
+                        lvResultList.getItems().add(entry.toString());
+                    }
+                }
+            }
+        });
+        
+        lvResultList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                for (WekaService.ResultEntry e : wekaService.getTrainingHistory()) {
+                    if (e.toString().equals(newVal)) {
+                        txtClassifierOutput.setText(e.output);
+                        txtClassifierOutput.positionCaret(0);
+                        
+                        // Sync model for Predict Tab (Still done automatically)
+                        com.medical.ml.service.WekaService.SharedModel sm = new com.medical.ml.service.WekaService.SharedModel();
+                        sm.classifier = e.algorithm.getClassifier();
+                        sm.header = e.header;
+                        com.medical.ml.service.WekaService.activeModel = sm;
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Set a valid default algorithm
+        Platform.runLater(() -> {
+            if (algorithmFactory != null && !algorithmFactory.getAllAlgorithmNames().isEmpty()) {
+                String defaultAlgo = algorithmFactory.getAllAlgorithmNames().stream()
+                        .filter(n -> n.contains("J48") || n.contains("Decision Tree"))
+                        .findFirst()
+                        .orElse(algorithmFactory.getAllAlgorithmNames().get(0));
+                txtCurrentClassifier.setText(defaultAlgo);
+            }
+        });
+
+        comboTargetClass.setOnShowing(e -> {
+            Instances data = wekaService.getOriginalData();
+            if (data != null) {
+                int currentSelection = comboTargetClass.getSelectionModel().getSelectedIndex();
+                java.util.List<String> attrNames = new java.util.ArrayList<>();
+                for (int i=0; i<data.numAttributes(); i++) {
+                    attrNames.add(data.attribute(i).name());
+                }
+                comboTargetClass.setItems(FXCollections.observableArrayList(attrNames));
+                if (currentSelection != -1 && currentSelection < attrNames.size()) {
+                    comboTargetClass.getSelectionModel().select(currentSelection);
+                } else {
+                    comboTargetClass.getSelectionModel().select(data.classIndex() == -1 ? data.numAttributes() - 1 : data.classIndex());
+                }
+            }
+        });
+    }
+
+    private java.util.List<WekaService.ResultEntry> getResultEntries() { return wekaService.getTrainingHistory(); }
+
+    private void refreshTargetClass() {
+        Instances data = wekaService.getOriginalData();
+        if (data != null && comboTargetClass.getItems().isEmpty()) {
+            java.util.List<String> attrNames = new java.util.ArrayList<>();
+            for (int i=0; i<data.numAttributes(); i++) {
+                attrNames.add(data.attribute(i).name());
+            }
+            comboTargetClass.setItems(FXCollections.observableArrayList(attrNames));
+            comboTargetClass.getSelectionModel().select(data.classIndex() == -1 ? data.numAttributes() - 1 : data.classIndex());
+        }
+    }
+
+    @FXML
+    private void handleChooseClassifier(ActionEvent event) {
+        List<String> algos = algorithmFactory.getAllAlgorithmNames();
+        ChoiceDialog<String> dialog = new ChoiceDialog<>(algos.get(0), algos);
+        dialog.setTitle("Choose Classifier");
+        dialog.setHeaderText("Select an algorithm");
+        dialog.showAndWait().ifPresent(choice -> txtCurrentClassifier.setText(choice));
+    }
+
+    @FXML
+    private void handleStartClassification(ActionEvent event) {
+        refreshTargetClass();
+        Instances data = wekaService.getOriginalData();
+        if (data == null) {
+            showAlert("No Data", "Please load data in the Preprocess tab first.");
+            return;
+        }
+
+        String algoName = txtCurrentClassifier.getText().trim();
+        MLAlgorithm tempAlgo;
+        try {
+            tempAlgo = algorithmFactory.getAlgorithm(algoName);
+        } catch (Exception e) {
+            tempAlgo = algorithmFactory.getAlgorithm(algorithmFactory.getAllAlgorithmNames().get(0));
+            txtCurrentClassifier.setText(tempAlgo.getName());
+        }
+        final MLAlgorithm algorithm = tempAlgo;
+
+        int classIndex = comboTargetClass.getSelectionModel().getSelectedIndex();
+        if (classIndex == -1) classIndex = data.numAttributes() - 1;
+        data.setClassIndex(classIndex);
+        
+        Instances trainInstance = data;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== Run information ===\n\n");
+        sb.append("Scheme:       weka.classifiers.").append(algorithm.getName()).append("\n");
+        sb.append("Relation:     ").append(data.relationName()).append("\n");
+        sb.append("Instances:    ").append(data.numInstances()).append("\n");
+        sb.append("Attributes:   ").append(data.numAttributes()).append("\n");
+        sb.append("Test mode:    ");
+
+        btnStart.setDisable(true);
+        btnStop.setDisable(false);
+        txtClassifierOutput.setText("Building model on training data...\n");
+        mainController.setStatus("Building model...");
+        mainController.setProgressVisible(true);
+
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                try {
+                    Instances train = new Instances(trainInstance);
+
+                    // ==========================================
+                    // ANTI-OOM SAFETY NET (Auto-Removal)
+                    // High-cardinality nominals (e.g. IDs, UUIDs, Dates) cause 
+                    // RandomTree/REPTree to allocate N-branches * N-instances, requiring ~8GB+ RAM.
+                    // ==========================================
+                    java.util.List<Integer> badIndices = new java.util.ArrayList<>();
+                    StringBuilder removedNames = new StringBuilder();
+                    for (int i = 0; i < train.numAttributes(); i++) {
+                        if (i != train.classIndex() && train.attribute(i).isNominal() && train.attribute(i).numValues() > 500) {
+                            badIndices.add(i);
+                            removedNames.append(train.attribute(i).name()).append(", ");
+                        }
+                    }
+                    
+                    if (!badIndices.isEmpty()) {
+                        weka.filters.unsupervised.attribute.Remove remove = new weka.filters.unsupervised.attribute.Remove();
+                        int[] arr = badIndices.stream().mapToInt(i -> i).toArray();
+                        remove.setAttributeIndicesArray(arr);
+                        remove.setInputFormat(train);
+                        train = weka.filters.Filter.useFilter(train, remove);
+                        
+                        sb.append("[Auto-Fixed OOM] Automatically ignored the following high-cardinality attributes to prevent memory crash:\n")
+                          .append(removedNames.toString()).append("\n\n");
+                    }
+
+                    Instances test = null;
+                    Evaluation eval = new Evaluation(train);
+                    
+                    if (rbUseTraining.isSelected()) {
+                        sb.append("evaluate on training data\n");
+                        algorithm.train(train);
+                        eval.evaluateModel(algorithm.getClassifier(), train);
+                    } else if (rbCrossValidation.isSelected()) {
+                        int folds = Integer.parseInt(txtFolds.getText());
+                        sb.append(folds).append("-fold cross-validation\n");
+                        algorithm.train(train); // train full for the saved model
+                        eval.crossValidateModel(algorithm.getClassifier(), train, folds, new Random(1));
+                    } else if (rbPercentageSplit.isSelected()) {
+                        double split = Double.parseDouble(txtSplitRatio.getText());
+                        sb.append("split ").append(split).append("% train, remainder test\n");
+                        Instances shuffled = new Instances(train);
+                        shuffled.randomize(new Random(1));
+                        int trainSize = (int) Math.round(shuffled.numInstances() * split / 100);
+                        train = new Instances(shuffled, 0, trainSize);
+                        test = new Instances(shuffled, trainSize, shuffled.numInstances() - trainSize);
+                        
+                        algorithm.train(train);
+                        eval.evaluateModel(algorithm.getClassifier(), test);
+                    } else {
+                        throw new Exception("Supplied test set not yet supported in UI.");
+                    }
+
+                    sb.append("\n=== Classifier model (full training set) ===\n\n");
+                    sb.append(algorithm.getClassifier().toString()).append("\n\n");
+                    sb.append(eval.toSummaryString("=== Summary ===\n", false)).append("\n");
+                    if (trainInstance.classAttribute().isNominal()) {
+                        sb.append(eval.toClassDetailsString("=== Detailed Accuracy By Class ===\n")).append("\n");
+                        sb.append(eval.toMatrixString("=== Confusion Matrix ===\n")).append("\n");
+                    }
+
+                    final Instances finalTrain = train;
+                    final Evaluation finalEval = eval;
+                    final String finalOutput = sb.toString();
+                    Platform.runLater(() -> {
+                        mainController.setProgressVisible(false);
+                        String timeStr = new SimpleDateFormat("HH:mm:ss").format(new Date());
+                        String resTitle = timeStr + " - " + algorithm.getName();
+                        
+                        WekaService.ResultEntry entry = new WekaService.ResultEntry(algorithm, finalEval, finalOutput, new Instances(finalTrain, 0));
+                        wekaService.getTrainingHistory().add(entry);
+                        
+                        lvResultList.getSelectionModel().select(entry.toString());
+                        txtClassifierOutput.setText(finalOutput);
+                        txtClassifierOutput.positionCaret(0);
+                        
+                        // Sync model for Predict Tab
+                        com.medical.ml.service.WekaService.SharedModel sm = new com.medical.ml.service.WekaService.SharedModel();
+                        sm.classifier = algorithm.getClassifier();
+                        sm.header = entry.header;
+                        com.medical.ml.service.WekaService.activeModel = sm;
+                        
+                        btnStart.setDisable(false);
+                        btnStop.setDisable(true);
+                        mainController.setStatus("OK");
+                    });
+
+                } catch (Throwable e) {
+                    System.err.println("Training thread error: " + e.getMessage());
+                    e.printStackTrace();
+                    Platform.runLater(() -> {
+                        mainController.setProgressVisible(false);
+                        txtClassifierOutput.setText("Error: " + e.getMessage() + "\nSee console for details.");
+                        btnStart.setDisable(false);
+                        btnStop.setDisable(true);
+                        mainController.setStatus("Error.");
+                    });
+                }
+                return null;
+            }
+        };
+
+        new Thread(task).start();
+    }
+
+    @FXML
+    private void handleStopClassification(ActionEvent event) {
+        mainController.setStatus("Interrupted.");
+        mainController.setProgressVisible(false);
+        btnStart.setDisable(false);
+        btnStop.setDisable(true);
+        txtClassifierOutput.appendText("\n[Interrupted]");
+    }
+
+    @FXML
+    private void handleExportModel() {
+        String selectedTitle = lvResultList.getSelectionModel().getSelectedItem();
+        if (selectedTitle == null) {
+            showAlert("Export Error", "請先選擇一個歷史紀錄模型。");
+            return;
+        }
+        
+        WekaService.ResultEntry targetEntry = null;
+        for (WekaService.ResultEntry entry : wekaService.getTrainingHistory()) {
+            if (entry.toString().equals(selectedTitle)) {
+                targetEntry = entry;
+                break;
+            }
+        }
+        if (targetEntry == null) return;
+        
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("將模型存檔 (.zip)");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ZIP Archive", "*.zip"));
+        fileChooser.setInitialFileName(targetEntry.algorithm.getName().replaceAll("\\s+", "_") + "_Model.zip");
+
+        File file = fileChooser.showSaveDialog(lvResultList.getScene().getWindow());
+        if (file != null) {
+            try {
+                exportService.exportModelAndPreprocessConfig(
+                    targetEntry.algorithm, 
+                    wekaService.getPreprocessFilter(), 
+                    targetEntry.header,
+                    targetEntry.output,
+                    file
+                );
+                mainController.setStatus("已將模型儲存至 " + file.getName());
+                showAlert("儲存成功", "模型已成功匯出至:\n" + file.getAbsolutePath());
+            } catch (Exception e) {
+                showAlert("儲存失敗", "匯出失敗: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @FXML
+    private void handleCompareModels() {
+        if (wekaService.getTrainingHistory().isEmpty()) {
+            showAlert("No Models", "目前沒有任何模型紀錄。請先訓練模型或至預測分頁載入模型。");
+            return;
+        }
+
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("📊 多模型分析對比面板");
+        dialog.setHeaderText("檢視與比較所有模型的詳細報告");
+        dialog.getDialogPane().setPrefSize(850, 650);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CLOSE);
+
+        TabPane tabPane = new TabPane();
+        for (int i = 0; i < wekaService.getTrainingHistory().size(); i++) {
+            WekaService.ResultEntry entry = wekaService.getTrainingHistory().get(i);
+            
+            Tab tab = new Tab("Model " + (i + 1) + ": " + entry.algorithm.getName());
+            tab.setClosable(false);
+            
+            TextArea ta = new TextArea();
+            ta.setEditable(false);
+            ta.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-size: 13px;");
+            ta.setText(entry.output == null || entry.output.isEmpty() ? "No historical report found." : entry.output);
+            
+            tab.setContent(ta);
+            tabPane.getTabs().add(tab);
+        }
+
+        dialog.getDialogPane().setContent(tabPane);
+        
+        // Auto-select the one currently selected in listview
+        int selectedIndex = lvResultList.getSelectionModel().getSelectedIndex();
+        if (selectedIndex >= 0 && selectedIndex < tabPane.getTabs().size()) {
+            tabPane.getSelectionModel().select(selectedIndex);
+        }
+        
+        dialog.showAndWait();
+    }
+
+    private void showAlert(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.show();
+    }
+}

@@ -1,0 +1,121 @@
+/* Premium Medical ML Styles */
+
+.root {
+    -fx-font-family: 'Segoe UI', 'Roboto', sans-serif;
+    -fx-base: #f4f7fa;
+    -fx-accent: #1565c0;
+    -fx-default-button: #1976d2;
+}
+
+/* Backgrounds */
+.main-bg {
+    -fx-background-color: linear-gradient(to bottom right, #ffffff, #f0f4f8);
+}
+
+.sidebar-bg {
+    -fx-background-color: #1a237e;
+}
+
+/* Header & Navigation */
+.header-container {
+    -fx-background-color: white;
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 10, 0, 0, 5);
+}
+
+.nav-label {
+    -fx-text-fill: #757575;
+    -fx-font-family: 'Segoe UI', Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-padding: 8 12;
+    -fx-background-radius: 6;
+}
+
+.nav-label:hover {
+    -fx-background-color: #f1f3f4;
+    -fx-text-fill: #1565c0;
+}
+
+.nav-label-active {
+    -fx-text-fill: #1565c0;
+    -fx-font-family: 'Segoe UI', Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-border-color: #1565c0;
+    -fx-border-width: 0 0 3 0;
+}
+
+/* Cards & Containers */
+.card {
+    -fx-background-color: white;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-border-color: #e0e6ed;
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 8, 0, 0, 2);
+}
+
+.pipeline-block {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #bbdefb;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 10;
+}
+
+/* Labels */
+.title-label {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0d47a1;
+}
+
+.section-label {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #37474f;
+}
+
+/* Buttons */
+.button {
+    -fx-background-radius: 8;
+    -fx-font-weight: bold;
+}
+
+.btn-primary {
+    -fx-background-color: #1565c0;
+    -fx-text-fill: white;
+}
+
+.btn-primary:hover {
+    -fx-background-color: #0d47a1;
+}
+
+.btn-secondary {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #1565c0;
+    -fx-text-fill: #1565c0;
+}
+
+.btn-success {
+    -fx-background-color: #2e7d32;
+    -fx-text-fill: white;
+}
+
+/* Forms */
+.text-field {
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #cfd8dc;
+    -fx-padding: 8;
+}
+
+.text-field:focused {
+    -fx-border-color: #1565c0;
+}
+
+/* Charts & Lists */
+.chart-title {
+    -fx-text-fill: #37474f;
+    -fx-font-size: 14px;
+}

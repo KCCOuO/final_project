@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/11" 
+      xmlns:fx="http://javafx.com/fxml/1" 
+      fx:controller="com.medical.ml.ui.controller.MainController" 
+      prefHeight="800.0" prefWidth="1200.0" 
+      stylesheets="@../styles/styles.css" styleClass="main-bg">
+    
+
+    <TabPane fx:id="mainTabPane" VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE">
+        <tabs>
+            <Tab text="資料前處理 (Preprocess)">
+                <fx:include source="tab_preprocess.fxml" />
+            </Tab>
+            <Tab text="機器學習訓練 (Classify)">
+                <fx:include source="tab_classify.fxml" />
+            </Tab>
+            <Tab text="病患預測 (Predict)">
+                <fx:include source="tab_predict.fxml" />
+            </Tab>
+        </tabs>
+    </TabPane>
+
+    <HBox spacing="10" alignment="CENTER_LEFT" styleClass="weka-status-bar" style="-fx-padding: 3 10; -fx-border-color: #cccccc; -fx-border-width: 1 0 0 0; -fx-background-color: #f0f0f0;">
+        <Label fx:id="statusLabel" onMouseClicked="#handleShowLog" text="歡迎使用醫療學習系統 (點擊這裡查看日誌)" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-cursor: hand;" />
+        <ProgressBar fx:id="progressBar" visible="false" progress="-1.0" prefWidth="150" />
+        <Region HBox.hgrow="ALWAYS" />
+    </HBox>
+</VBox>

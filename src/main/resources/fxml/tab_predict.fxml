@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/11" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.medical.ml.ui.controller.PredictTabController"
+      spacing="15" style="-fx-padding: 20;">
+
+    <Label text="臨床預測系統 (Prediction Engine)" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+    
+    <!-- Model Section -->
+    <VBox spacing="10" style="-fx-padding: 15; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-background-color: #f9f9f9;">
+        <Label text="第一步: 選擇作用中模型" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <ComboBox fx:id="comboHistory" promptText="從訓練歷史紀錄切換型號..."/>
+            <Region HBox.hgrow="ALWAYS" />
+            <Button text="載入本機模型 (.zip)..." onAction="#handleLoadModel" style="-fx-base: #e1f5fe;"/>
+            <Button text="📊 開啟多模型對比面板" onAction="#handleCompareModels" style="-fx-base: #fff9c4;"/>
+        </HBox>
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Label text="目前的模型: " style="-fx-font-weight: bold;"/>
+            <Label fx:id="lblCurrentModel" text="尚未載入任何模型。" textFill="#d32f2f"/>
+        </HBox>
+    </VBox>
+
+    <Separator/>
+
+    <!-- Prediction Section -->
+    <VBox spacing="20" style="-fx-padding: 15; -fx-border-color: #cccccc; -fx-border-radius: 5; -fx-background-color: #ffffff;" VBox.vgrow="ALWAYS">
+        <Label text="第二步: 進行病患預測" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+        
+        <HBox spacing="20">
+            <!-- Single Patient Predict -->
+            <VBox spacing="10" alignment="TOP_CENTER" style="-fx-padding: 20; -fx-border-color: #dddddd; -fx-border-radius: 5;" HBox.hgrow="ALWAYS">
+                <Label text="單筆病患即時診斷" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+                <Label text="手動輸入一位病患的特徵數據" textFill="#666666"/>
+                <Button text="開啟動態評估表單" onAction="#handleSinglePredict" prefWidth="180" prefHeight="40" style="-fx-base: #4caf50; -fx-font-weight: bold;"/>
+            </VBox>
+
+            <!-- Batch Predict -->
+            <VBox spacing="10" alignment="TOP_CENTER" style="-fx-padding: 20; -fx-border-color: #dddddd; -fx-border-radius: 5;" HBox.hgrow="ALWAYS">
+                <Label text="批次預測 (CSV檔案匯入)" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+                <Label text="直接上傳多位病患的完整 CSV 進行診斷" textFill="#666666"/>
+                <Button text="上傳 CSV 並預測" onAction="#handleBatchPredict" prefWidth="180" prefHeight="40" style="-fx-base: #2196f3; -fx-font-weight: bold;"/>
+            </VBox>
+        </HBox>
+    </VBox>
+
+</VBox>

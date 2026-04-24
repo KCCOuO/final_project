@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/11" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.medical.ml.ui.controller.ClassifyTabController"
+      spacing="8" style="-fx-padding: 10;">
+
+    <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-border-color: #ccc; -fx-padding: 8;">
+        <Label text="模型演算法 (Classifier)" style="-fx-font-weight: bold;"/>
+        <Button text="選擇" onAction="#handleChooseClassifier" prefWidth="80"/>
+        <TextField fx:id="txtCurrentClassifier" text="trees.J48" editable="false" HBox.hgrow="ALWAYS" style="-fx-background-color: #fff; -fx-border-color: #ccc;"/>
+    </HBox>
+
+    <SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.3">
+        <!-- Left Panel -->
+        <VBox spacing="10" style="-fx-padding: 5;">
+            
+            <!-- Test Options -->
+            <VBox style="-fx-border-color: #ccc; -fx-padding: 15 5 5 5;" spacing="5">
+                <Label text="測驗與訓練方式 (Test options)" style="-fx-translate-y: -22; -fx-background-color: #f4f4f4; -fx-padding: 0 5;"/>
+                <VBox spacing="8" style="-fx-translate-y: -15;">
+                    <fx:define><ToggleGroup fx:id="tgTestOptions"/></fx:define>
+                    
+                    <RadioButton fx:id="rbUseTraining" text="使用訓練集測試 (Use training set)" toggleGroup="$tgTestOptions"/>
+                    
+                    <HBox spacing="5" alignment="CENTER_LEFT">
+                        <RadioButton fx:id="rbSuppliedTest" text="提供外部測試集 (Supplied test set)" toggleGroup="$tgTestOptions"/>
+                        <Button text="設定..." disable="true" style="-fx-font-size: 10px;"/>
+                    </HBox>
+                    
+                    <HBox spacing="5" alignment="CENTER_LEFT">
+                        <RadioButton fx:id="rbCrossValidation" text="交叉驗證 (Cross-validation)" toggleGroup="$tgTestOptions"/>
+                        <Label text="折數"/>
+                        <TextField fx:id="txtFolds" text="10" prefWidth="40"/>
+                    </HBox>
+                    
+                    <HBox spacing="5" alignment="CENTER_LEFT">
+                        <RadioButton fx:id="rbPercentageSplit" text="切割訓練/測試集 (Percentage split)" toggleGroup="$tgTestOptions" selected="true"/>
+                        <Label text="\%"/>
+                        <TextField fx:id="txtSplitRatio" text="80" prefWidth="40"/>
+                    </HBox>
+
+                    <Button text="更多選項 (More options)..." disable="true" maxWidth="Infinity"/>
+                </VBox>
+            </VBox>
+
+            <!-- Target Selection & Buttons -->
+            <VBox spacing="10" style="-fx-padding: 5 0;">
+                <ComboBox fx:id="comboTargetClass" maxWidth="Infinity" promptText="預測目標欄位"/>
+                
+                <HBox spacing="10" alignment="CENTER">
+                    <Button fx:id="btnStart" text="開始訓練" onAction="#handleStartClassification" prefWidth="80"/>
+                    <Button fx:id="btnStop" text="停止" onAction="#handleStopClassification" disable="true" prefWidth="80"/>
+                </HBox>
+            </VBox>
+
+            <!-- Result List -->
+            <VBox style="-fx-border-color: #ccc; -fx-padding: 15 5 5 5;" VBox.vgrow="ALWAYS">
+                <Label text="歷史訓練紀錄 (Result list)" style="-fx-translate-y: -22; -fx-background-color: #f4f4f4; -fx-padding: 0 5;"/>
+                <ListView fx:id="lvResultList" VBox.vgrow="ALWAYS" style="-fx-translate-y: -10;"/>
+                <HBox spacing="10" alignment="CENTER" style="-fx-translate-y: -5;">
+                    <Button text="將選取模型存檔..." onAction="#handleExportModel" style="-fx-base: #fff9c4;" prefWidth="140"/>
+                </HBox>
+            </VBox>
+
+        </VBox>
+
+        <!-- Right Panel - Classifier Output -->
+        <VBox style="-fx-padding: 5;">
+            <VBox style="-fx-border-color: #ccc; -fx-padding: 15 5 5 5;" VBox.vgrow="ALWAYS">
+                <Label text="分析報告 (Classifier output)" style="-fx-translate-y: -22; -fx-background-color: #f4f4f4; -fx-padding: 0 5;"/>
+                <TextArea fx:id="txtClassifierOutput" VBox.vgrow="ALWAYS" editable="false" 
+                          style="-fx-translate-y: -10; -fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 12px; -fx-background-color: #fff;"/>
+            </VBox>
+        </VBox>
+    </SplitPane>
+</VBox>

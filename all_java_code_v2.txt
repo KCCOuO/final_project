@@ -1,0 +1,1323 @@
+﻿{JavaFXApplication.java}
+package com.medical.ml;
+
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.stage.Stage;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ApplicationContextInitializer;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.support.GenericApplicationContext;
+
+public class JavaFXApplication extends Application {
+
+    private ConfigurableApplicationContext applicationContext;
+
+    @Override
+    public void init() {
+        ApplicationContextInitializer<GenericApplicationContext> initializer =
+                context -> {
+                    context.registerBean(Application.class, () -> JavaFXApplication.this);
+                    context.registerBean(Parameters.class, this::getParameters);
+                };
+
+        applicationContext = new SpringApplicationBuilder(MedicalMLApplication.class)
+                .initializers(initializer)
+                .headless(false) // Required for GUI components like JavaFX FileChooser / UI
+                .run(getParameters().getRaw().toArray(new String[0]));
+    }
+
+    @Override
+    public void start(Stage primaryStage) {
+        applicationContext.publishEvent(new StageReadyEvent(primaryStage));
+    }
+
+    @Override
+    public void stop() {
+        applicationContext.close();
+        Platform.exit();
+    }
+}
+
+
+{MedicalMLApplication.java}
+package com.medical.ml;
+
+import javafx.application.Application;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class MedicalMLApplication {
+
+    public static void main(String[] args) {
+        // Launch JavaFX application, which will bootstrap Spring internally
+        Application.launch(JavaFXApplication.class, args);
+    }
+}
+
+
+{PrimaryStageInitializer.java}
+package com.medical.ml;
+
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.stage.Stage;
+import jfxtras.styles.jmetro.JMetro;
+import jfxtras.styles.jmetro.Style;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationListener;
+import org.springframework.core.io.Resource;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+
+@Component
+public class PrimaryStageInitializer implements ApplicationListener<StageReadyEvent> {
+
+    @Value("classpath:/fxml/layout.fxml")
+    private Resource layoutResource;
+
+    private final ApplicationContext applicationContext;
+
+    public PrimaryStageInitializer(ApplicationContext applicationContext) {
+        this.applicationContext = applicationContext;
+    }
+
+    @Override
+    public void onApplicationEvent(StageReadyEvent event) {
+        try {
+            Stage stage = event.getStage();
+            
+            FXMLLoader fxmlLoader = new FXMLLoader(layoutResource.getURL());
+            fxmlLoader.setControllerFactory(applicationContext::getBean);
+            Parent root = fxmlLoader.load();
+            
+            Scene scene = new Scene(root, 1024, 768);
+            
+            JMetro jMetro = new JMetro(Style.LIGHT);
+            jMetro.setScene(scene);
+            
+            stage.setScene(scene);
+            stage.setTitle("Medical ML Platform");
+            stage.show();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load layout", e);
+        }
+    }
+}
+
+
+{StageReadyEvent.java}
+package com.medical.ml;
+
+import javafx.stage.Stage;
+import org.springframework.context.ApplicationEvent;
+
+public class StageReadyEvent extends ApplicationEvent {
+
+    public StageReadyEvent(Stage stage) {
+        super(stage);
+    }
+
+    public Stage getStage() {
+        return (Stage) getSource();
+    }
+}
+
+
+{PreprocessOptions.java}
+package com.medical.ml.dto;
+
+public class PreprocessOptions {
+    private double trainTestSplitRatio = 0.8;
+    private boolean applyStandardize = true;
+    
+    // Getters and Setters
+    public double getTrainTestSplitRatio() {
+        return trainTestSplitRatio;
+    }
+
+    public void setTrainTestSplitRatio(double trainTestSplitRatio) {
+        this.trainTestSplitRatio = trainTestSplitRatio;
+    }
+
+    public boolean isApplyStandardize() {
+        return applyStandardize;
+    }
+
+    public void setApplyStandardize(boolean applyStandardize) {
+        this.applyStandardize = applyStandardize;
+    }
+}
+
+
+{AdaBoostAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.meta.AdaBoostM1;
+import weka.core.Instances;
+
+public class AdaBoostAlgo implements MLAlgorithm {
+
+    private AdaBoostM1 classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new AdaBoostM1();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "AdaBoostM1";
+    }
+}
+
+
+{BaggingAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.meta.Bagging;
+import weka.core.Instances;
+
+public class BaggingAlgo implements MLAlgorithm {
+
+    private Bagging classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new Bagging();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "Bagging";
+    }
+}
+
+
+{IBkAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.lazy.IBk;
+import weka.core.Instances;
+
+public class IBkAlgo implements MLAlgorithm {
+
+    private IBk classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new IBk(); // Defaults to 1-Nearest Neighbor
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "IBk (K-Nearest Neighbors)";
+    }
+}
+
+
+{J48Algo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.trees.J48;
+import weka.core.Instances;
+
+public class J48Algo implements MLAlgorithm {
+
+    private J48 classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new J48();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "J48 Decision Tree";
+    }
+}
+
+
+{LMTAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.trees.LMT;
+import weka.core.Instances;
+
+public class LMTAlgo implements MLAlgorithm {
+
+    private LMT classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new LMT();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "Logistic Model Trees (LMT)";
+    }
+}
+
+
+{LogisticAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.functions.Logistic;
+import weka.core.Instances;
+
+public class LogisticAlgo implements MLAlgorithm {
+
+    private Logistic classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new Logistic();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "Logistic Regression";
+    }
+}
+
+
+{MLAlgorithm.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.core.Instances;
+import weka.classifiers.Classifier;
+
+public interface MLAlgorithm {
+    
+    /**
+     * Train the model with the given data
+     * @param data The training data
+     */
+    void train(Instances data) throws Exception;
+    
+    /**
+     * Get the trained Weka classifier
+     * @return Classifier
+     */
+    Classifier getClassifier();
+    
+    /**
+     * Get the display name of the algorithm
+     * @return Name of algorithm
+     */
+    String getName();
+}
+
+
+{NaiveBayesAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.bayes.NaiveBayes;
+import weka.core.Instances;
+
+public class NaiveBayesAlgo implements MLAlgorithm {
+
+    private NaiveBayes classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new NaiveBayes();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "Naive Bayes";
+    }
+}
+
+
+{RandomForestAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.trees.RandomForest;
+import weka.core.Instances;
+
+public class RandomForestAlgo implements MLAlgorithm {
+
+    private RandomForest classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new RandomForest();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "Random Forest";
+    }
+}
+
+
+{SMOAlgo.java}
+package com.medical.ml.ml.algorithm;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.functions.SMO;
+import weka.core.Instances;
+
+public class SMOAlgo implements MLAlgorithm {
+
+    private SMO classifier;
+
+    @Override
+    public void train(Instances data) throws Exception {
+        classifier = new SMO();
+        classifier.buildClassifier(data);
+    }
+
+    @Override
+    public Classifier getClassifier() {
+        return classifier;
+    }
+
+    @Override
+    public String getName() {
+        return "SMO (Support Vector Machine)";
+    }
+}
+
+
+{AlgorithmFactory.java}
+package com.medical.ml.ml.factory;
+
+import com.medical.ml.ml.algorithm.*;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class AlgorithmFactory {
+
+    private static final List<String> ALGORITHM_NAMES = java.util.Arrays.asList(
+        "Random Forest", "Bagging", "AdaBoostM1", "J48 Decision Tree",
+        "Logistic Model Trees (LMT)", "Logistic Regression",
+        "SMO (Support Vector Machine)", "Naive Bayes", "IBk (K-Nearest Neighbors)"
+    );
+
+    public static MLAlgorithm getAlgorithm(String name) {
+        switch (name) {
+            case "Random Forest": return new RandomForestAlgo();
+            case "Bagging": return new BaggingAlgo();
+            case "AdaBoostM1": return new AdaBoostAlgo();
+            case "J48 Decision Tree": return new J48Algo();
+            case "Logistic Model Trees (LMT)": return new LMTAlgo();
+            case "Logistic Regression": return new LogisticAlgo();
+            case "SMO (Support Vector Machine)": return new SMOAlgo();
+            case "Naive Bayes": return new NaiveBayesAlgo();
+            case "IBk (K-Nearest Neighbors)": return new IBkAlgo();
+            default: throw new IllegalArgumentException("Unknown algorithm: " + name);
+        }
+    }
+    
+    public static List<String> getAllAlgorithmNames() {
+        return new ArrayList<>(ALGORITHM_NAMES);
+    }
+}
+
+
+{ExportService.java}
+package com.medical.ml.service;
+
+import com.medical.ml.ml.algorithm.MLAlgorithm;
+import com.medical.ml.ml.factory.AlgorithmFactory;
+import org.springframework.stereotype.Service;
+import weka.classifiers.Evaluation;
+import weka.core.SerializationHelper;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+@Service
+public class ExportService {
+
+    public void exportModelAndPreprocessConfig(MLAlgorithm algorithm, File zipFile) throws Exception {
+        try (FileOutputStream fos = new FileOutputStream(zipFile);
+             ZipOutputStream zos = new ZipOutputStream(fos)) {
+
+            // Save Model
+            ZipEntry modelEntry = new ZipEntry("model.model");
+            zos.putNextEntry(modelEntry);
+            SerializationHelper.write(zos, algorithm.getClassifier());
+            zos.flush();
+            zos.closeEntry();
+            
+            // Note: In a complete implementation we would also serialize the `PreprocessOptions` 
+            // and the `MultiFilter` objects to a `config.dat` so they can be recreated during Step 4.
+        }
+    }
+}
+
+
+{PredictionService.java}
+package com.medical.ml.service;
+
+import org.springframework.stereotype.Service;
+import weka.classifiers.Classifier;
+import weka.core.Instance;
+import weka.core.Instances;
+
+@Service
+public class PredictionService {
+
+    /**
+     * Performs a prediction on a single instance.
+     * 
+     * @param classifier The trained Weka model
+     * @param instance The single data point to predict
+     * @return The predicted class value as a String (assuming nominal class)
+     * @throws Exception if prediction fails
+     */
+    public String predictSingle(Classifier classifier, Instance instance) throws Exception {
+        if (classifier == null || instance == null) {
+            throw new IllegalArgumentException("Classifier and Instance must not be null");
+        }
+        
+        // Ensure the instance has access to its dataset format structure
+        Instances dataset = instance.dataset();
+        if (dataset == null || dataset.classIndex() < 0) {
+             throw new IllegalStateException("Instance is missing dataset format or class index is not set");
+        }
+        
+        double predictedValue = classifier.classifyInstance(instance);
+        
+        // If class is nominal (most classification tasks), return its string label
+        if (dataset.classAttribute().isNominal()) {
+             return dataset.classAttribute().value((int) predictedValue);
+        } else {
+             // Otherwise return numeric value
+             return String.valueOf(predictedValue);
+        }
+    }
+}
+
+
+{WekaService.java}
+package com.medical.ml.service;
+
+import com.medical.ml.dto.PreprocessOptions;
+import org.springframework.stereotype.Service;
+import weka.core.Instances;
+import weka.filters.Filter;
+import weka.filters.MultiFilter;
+import weka.filters.unsupervised.attribute.ReplaceMissingValues;
+import weka.filters.unsupervised.attribute.Standardize;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+@Service
+public class WekaService {
+    
+    // Application State for the loaded data
+    private Instances originalData;
+    private Instances preprocessedData;
+    private Instances trainData;
+    private Instances testData;
+    private PreprocessOptions currentOptions;
+    private weka.classifiers.Classifier currentModel;
+
+    public void setCurrentModel(weka.classifiers.Classifier model) {
+        this.currentModel = model;
+    }
+
+    public weka.classifiers.Classifier getCurrentModel() {
+        return currentModel;
+    }
+
+    /**
+     * Sets the newly loaded dataset as the original data.
+     */
+    public void setOriginalData(Instances data) {
+        this.originalData = data;
+        if (this.originalData != null && this.originalData.classIndex() == -1) {
+            this.originalData.setClassIndex(this.originalData.numAttributes() - 1);
+        }
+        this.preprocessedData = null; // Reset preprocessed data when new data is loaded
+    }
+
+    public Instances getOriginalData() {
+        return originalData;
+    }
+
+    public Instances getPreprocessedData() {
+        return preprocessedData;
+    }
+    
+    public Instances getTrainData() {
+        return trainData;
+    }
+    
+    public Instances getTestData() {
+        return testData;
+    }
+
+    /**
+     * Applies preprocessing filters based on user options.
+     */
+    public Instances applyPreprocessing(PreprocessOptions options) throws Exception {
+        if (originalData == null) {
+            throw new IllegalStateException("No dataset loaded.");
+        }
+        this.currentOptions = options;
+
+        List<Filter> filtersToApply = new ArrayList<>();
+
+        // 1. Always replace missing values as a basic safety measure
+        ReplaceMissingValues replaceMissing = new ReplaceMissingValues();
+        filtersToApply.add(replaceMissing);
+
+        // 2. Apply Standardization (Z-Score) if selected by user
+        if (options.isApplyStandardize()) {
+            Standardize standardize = new Standardize();
+            filtersToApply.add(standardize);
+        }
+
+        // Setup MultiFilter
+        MultiFilter multiFilter = new MultiFilter();
+        multiFilter.setFilters(filtersToApply.toArray(new Filter[0]));
+        multiFilter.setInputFormat(originalData);
+
+        // Apply filters
+        this.preprocessedData = Filter.useFilter(originalData, multiFilter);
+
+        // Split Data into Train/Test based on Ratio
+        splitData(options.getTrainTestSplitRatio());
+
+        return this.preprocessedData;
+    }
+
+    /**
+     * Splits the preprocessed data into training and testing sets.
+     */
+    private void splitData(double trainRatio) {
+        if (preprocessedData == null) return;
+        
+        Instances shuffled = new Instances(preprocessedData);
+        shuffled.randomize(new Random(42));
+        int trainSize = (int) Math.round(shuffled.numInstances() * trainRatio);
+        int testSize = shuffled.numInstances() - trainSize;
+        
+        this.trainData = new Instances(shuffled, 0, trainSize);
+        this.testData = new Instances(shuffled, trainSize, testSize);
+    }
+}
+
+
+{ImportController.java}
+package com.medical.ml.ui.controller;
+
+import com.medical.ml.service.WekaService;
+import com.medical.ml.util.DataLoaderUtil;
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
+import javafx.stage.FileChooser;
+import org.springframework.stereotype.Component;
+import weka.core.Instances;
+
+import java.io.File;
+
+@Component
+public class ImportController {
+
+    @FXML private TextField txtFilePath;
+    @FXML private Label lblInstances;
+    @FXML private Label lblAttributes;
+    @FXML private Label lblClassAttribute;
+
+    private final WekaService wekaService;
+
+    public ImportController(WekaService wekaService) {
+        this.wekaService = wekaService;
+    }
+
+    @FXML
+    private void handleBrowse(ActionEvent event) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Select Medical CSV Dataset");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+        
+        File selectedFile = fileChooser.showOpenDialog(txtFilePath.getScene().getWindow());
+        
+        if (selectedFile != null) {
+            txtFilePath.setText(selectedFile.getAbsolutePath());
+            loadDataset(selectedFile);
+        }
+    }
+
+    private void loadDataset(File file) {
+        try {
+            Instances data = DataLoaderUtil.loadCSV(file);
+            wekaService.setOriginalData(data);
+            
+            lblInstances.setText(String.valueOf(data.numInstances()));
+            lblAttributes.setText(String.valueOf(data.numAttributes()));
+            
+            if (data.classIndex() != -1) {
+                lblClassAttribute.setText(data.classAttribute().name() + " (Index: " + data.classIndex() + ")");
+            } else {
+                lblClassAttribute.setText("Not Set");
+            }
+            
+        } catch (Exception e) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error Loading Data");
+            alert.setHeaderText("Failed to parse CSV file");
+            alert.setContentText(e.getMessage());
+            alert.showAndWait();
+        }
+    }
+}
+
+
+{MainController.java}
+package com.medical.ml.ui.controller;
+
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.layout.StackPane;
+import org.springframework.context.ApplicationContext;
+import org.springframework.core.io.Resource;
+import org.springframework.stereotype.Component;
+import java.io.IOException;
+
+@Component
+public class MainController {
+
+    @FXML private StackPane contentPane;
+    @FXML private Button btnPrevious;
+    @FXML private Button btnNext;
+    @FXML private Label step1Label, step2Label, step3Label, step4Label;
+
+    private final ApplicationContext applicationContext;
+    
+    private int currentStep = 1;
+
+    public MainController(ApplicationContext applicationContext) {
+        this.applicationContext = applicationContext;
+    }
+
+    @FXML
+    public void initialize() {
+        loadStep(1);
+        updateUI();
+    }
+
+    @FXML
+    private void handleNext(ActionEvent event) {
+        if (currentStep < 4) {
+            currentStep++;
+            loadStep(currentStep);
+            updateUI();
+        }
+    }
+
+    @FXML
+    private void handlePrevious(ActionEvent event) {
+        if (currentStep > 1) {
+            currentStep--;
+            loadStep(currentStep);
+            updateUI();
+        }
+    }
+
+    private void updateUI() {
+        btnPrevious.setDisable(currentStep == 1);
+        btnNext.setDisable(currentStep == 4);
+        btnNext.setText(currentStep == 4 ? "Finish" : "Next");
+        
+        String activeStyle = "-fx-font-weight: bold; -fx-text-fill: #0056b3; -fx-font-size: 14px;";
+        String inactiveStyle = "-fx-font-weight: normal; -fx-text-fill: #555555; -fx-font-size: 14px;";
+        
+        step1Label.setStyle(currentStep == 1 ? activeStyle : inactiveStyle);
+        step2Label.setStyle(currentStep == 2 ? activeStyle : inactiveStyle);
+        step3Label.setStyle(currentStep == 3 ? activeStyle : inactiveStyle);
+        step4Label.setStyle(currentStep == 4 ? activeStyle : inactiveStyle);
+    }
+
+    private void loadStep(int step) {
+        String fxmlPath;
+        switch (step) {
+            case 1: fxmlPath = "classpath:/fxml/step_import.fxml"; break;
+            case 2: fxmlPath = "classpath:/fxml/step_preprocess.fxml"; break;
+            case 3: fxmlPath = "classpath:/fxml/step_train.fxml"; break;
+            case 4: fxmlPath = "classpath:/fxml/step_predict.fxml"; break;
+            default: return;
+        }
+
+        try {
+            Resource resource = applicationContext.getResource(fxmlPath);
+            FXMLLoader loader = new FXMLLoader(resource.getURL());
+            loader.setControllerFactory(applicationContext::getBean);
+            Parent view = loader.load();
+            
+            contentPane.getChildren().clear();
+            contentPane.getChildren().add(view);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+
+{PredictController.java}
+package com.medical.ml.ui.controller;
+
+import com.medical.ml.ml.algorithm.MLAlgorithm;
+import com.medical.ml.service.PredictionService;
+import com.medical.ml.service.WekaService;
+import javafx.application.Platform;
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.geometry.HPos;
+import javafx.scene.Node;
+import javafx.scene.control.*;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.VBox;
+import org.springframework.stereotype.Component;
+import weka.core.Attribute;
+import weka.core.DenseInstance;
+import weka.core.Instance;
+import weka.core.Instances;
+import weka.classifiers.Classifier;
+
+import java.text.NumberFormat;
+import java.text.ParseException;
+import java.util.HashMap;
+import java.util.Map;
+
+@Component
+public class PredictController {
+
+    @FXML private TextField txtSearch;
+    @FXML private GridPane gridDynamicForm;
+    @FXML private Label lblPredictionResult;
+    @FXML private Button btnPredict;
+
+    private final WekaService wekaService;
+    private final PredictionService predictionService;
+    
+    // Store references to the generated inputs to extract their values later
+    private final Map<Attribute, Control> attributeInputMap = new HashMap<>();
+
+    public PredictController(WekaService wekaService, PredictionService predictionService) {
+        this.wekaService = wekaService;
+        this.predictionService = predictionService;
+    }
+
+    @FXML
+    public void initialize() {
+        // Debounce or filter on text change
+        txtSearch.textProperty().addListener((observable, oldValue, newValue) -> {
+            filterFormFields(newValue);
+        });
+    }
+
+    /**
+     * Should be called when the wizard switches to Step 4.
+     * We simulate this by just adding a refresh button or calling it when needed.
+     * For now, a user can click "Load Form" or similar. But since we use ApplicationContext
+     * we can expose a public refresh method. 
+     * Because navigation is dynamic, let's wire it to a button for safety in the example.
+     */
+    @FXML
+    public void handleRefreshForm(ActionEvent event) {
+        Instances data = wekaService.getTrainData();
+        if (data == null) {
+            showAlert("No Model", "No training data structure available (Please run previous steps).");
+            return;
+        }
+
+        gridDynamicForm.getChildren().clear();
+        attributeInputMap.clear();
+
+        int row = 0;
+        int col = 0;
+
+        // Loop through all attributes (except the class attribute) to generate fields
+        for (int i = 0; i < data.numAttributes(); i++) {
+            if (i == data.classIndex()) continue; // Skip target variable
+
+            Attribute attr = data.attribute(i);
+            Label lblName = new Label(attr.name() + ":");
+            lblName.setStyle("-fx-font-weight: bold;");
+
+            Control inputControl;
+
+            if (attr.isNominal()) {
+                ComboBox<String> combo = new ComboBox<>();
+                for (int v = 0; v < attr.numValues(); v++) {
+                    combo.getItems().add(attr.value(v));
+                }
+                combo.getSelectionModel().selectFirst();
+                combo.setMaxWidth(Double.MAX_VALUE);
+                inputControl = combo;
+            } else {
+                TextField txt = new TextField();
+                txt.setPromptText("Enter numeric value");
+                inputControl = txt;
+            }
+
+            // Dual Column Layout (Col 0,1 and Col 2,3)
+            gridDynamicForm.add(lblName, col * 2, row);
+            gridDynamicForm.add(inputControl, col * 2 + 1, row);
+            GridPane.setHalignment(lblName, HPos.RIGHT);
+
+            attributeInputMap.put(attr, inputControl);
+
+            col++;
+            if (col > 1) { // 2 fields per row
+                col = 0;
+                row++;
+            }
+        }
+    }
+
+    private void filterFormFields(String query) {
+        String lowerQuery = query == null ? "" : query.toLowerCase();
+        
+        for (Map.Entry<Attribute, Control> entry : attributeInputMap.entrySet()) {
+            Attribute attr = entry.getKey();
+            Control control = entry.getValue();
+            
+            // Find the associated label in the grid to hide/show it along with the control
+            Node labelNode = null;
+            for (Node child : gridDynamicForm.getChildren()) {
+                if (child instanceof Label && ((Label) child).getText().startsWith(attr.name())) {
+                    labelNode = child;
+                    break;
+                }
+            }
+            
+            boolean match = attr.name().toLowerCase().contains(lowerQuery);
+            control.setVisible(match);
+            control.setManaged(match);
+            if (labelNode != null) {
+                labelNode.setVisible(match);
+                labelNode.setManaged(match);
+            }
+        }
+    }
+
+    @FXML
+    private void handlePredictSingle(ActionEvent event) {
+        // Note: In real scenarios, you'd pull the actual trained classifier.
+        // For architectural safety within the same application session without file loading:
+        // We'd ideally have WekaService hold the 'currentClassifier'
+        
+        Instances dataTemplate = wekaService.getTrainData();
+        if (dataTemplate == null) {
+            showAlert("Error", "Training data template not found. Train model first.");
+            return;
+        }
+
+        try {
+            // Build a new instance aligned with the dataset structure
+            Instance newInst = new DenseInstance(dataTemplate.numAttributes());
+            newInst.setDataset(dataTemplate);
+            
+            for (Map.Entry<Attribute, Control> entry : attributeInputMap.entrySet()) {
+                Attribute attr = entry.getKey();
+                Control control = entry.getValue();
+                
+                if (attr.isNominal()) {
+                    @SuppressWarnings("unchecked")
+                    ComboBox<String> combo = (ComboBox<String>) control;
+                    String val = combo.getValue();
+                    if (val != null) newInst.setValue(attr, val);
+                } else if (attr.isNumeric()) {
+                    TextField txt = (TextField) control;
+                    if (!txt.getText().isEmpty()) {
+                        double val = NumberFormat.getInstance().parse(txt.getText()).doubleValue();
+                        newInst.setValue(attr, val);
+                    } else {
+                        newInst.setMissing(attr);
+                    }
+                }
+            }
+
+            Classifier model = wekaService.getCurrentModel();
+            if (model == null) {
+                showAlert("Error", "No trained model found. Please train a model first.");
+                return;
+            }
+
+            String result = predictionService.predictSingle(model, newInst);
+            lblPredictionResult.setText("Prediction: " + result);
+            lblPredictionResult.setStyle("-fx-text-fill: #2e7d32; -fx-font-weight: bold; -fx-font-size: 16px;");
+
+        } catch (ParseException e) {
+            showAlert("Input Error", "Please ensure all numeric fields contain valid numbers.");
+        } catch (Exception e) {
+            showAlert("Prediction Error", "Failed to evaluate instance: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void showAlert(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
+}
+
+
+{PreprocessController.java}
+package com.medical.ml.ui.controller;
+
+import com.medical.ml.dto.PreprocessOptions;
+import com.medical.ml.service.WekaService;
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.scene.chart.BarChart;
+import javafx.scene.chart.PieChart;
+import javafx.scene.control.Alert;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.Slider;
+import org.springframework.stereotype.Component;
+import weka.core.Instances;
+
+@Component
+public class PreprocessController {
+
+    @FXML private Slider sliderTrainRatio;
+    @FXML private Label lblTrainRatio;
+    @FXML private CheckBox chkStandardize;
+    
+    @FXML private Label lblPreprocessStatus;
+    @FXML private PieChart classDistributionChart;
+    @FXML private BarChart<String, Number> featureDistributionChart; // Example placeholder
+
+    private final WekaService wekaService;
+
+    public PreprocessController(WekaService wekaService) {
+        this.wekaService = wekaService;
+    }
+
+    @FXML
+    public void initialize() {
+        // Setup slider listener to update label
+        sliderTrainRatio.valueProperty().addListener((obs, oldVal, newVal) -> {
+            lblTrainRatio.setText(String.format("%.0f%%", newVal.doubleValue() * 100));
+        });
+    }
+
+    @FXML
+    private void handleApplyPreprocess(ActionEvent event) {
+        if (wekaService.getOriginalData() == null) {
+            showAlert("No Data", "Please go back to Step 1 and load a dataset first.");
+            return;
+        }
+
+        try {
+            PreprocessOptions options = new PreprocessOptions();
+            options.setTrainTestSplitRatio(sliderTrainRatio.getValue());
+            options.setApplyStandardize(chkStandardize.isSelected());
+
+            Instances result = wekaService.applyPreprocessing(options);
+            
+            lblPreprocessStatus.setText("Success! Data Split: " + 
+                wekaService.getTrainData().numInstances() + " Train, " + 
+                wekaService.getTestData().numInstances() + " Test.");
+                
+            updateCharts(result);
+
+        } catch (Exception e) {
+            showAlert("Preprocessing Error", e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    private void updateCharts(Instances data) {
+        classDistributionChart.getData().clear();
+        // Concept code to draw chart based on Weka data
+        if (data.classIndex() != -1 && data.classAttribute().isNominal()) {
+            int[] counts = data.attributeStats(data.classIndex()).nominalCounts;
+            for (int i = 0; i < counts.length; i++) {
+                PieChart.Data slice = new PieChart.Data(data.classAttribute().value(i), counts[i]);
+                classDistributionChart.getData().add(slice);
+            }
+        }
+    }
+
+    private void showAlert(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
+}
+
+
+{TrainController.java}
+package com.medical.ml.ui.controller;
+
+import com.medical.ml.ml.algorithm.MLAlgorithm;
+import com.medical.ml.ml.factory.AlgorithmFactory;
+import com.medical.ml.service.ExportService;
+import com.medical.ml.service.WekaService;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.concurrent.Task;
+import javafx.scene.control.*;
+import javafx.stage.FileChooser;
+import org.springframework.stereotype.Component;
+import weka.classifiers.Evaluation;
+
+import java.io.File;
+
+@Component
+public class TrainController {
+
+    @FXML private ComboBox<String> comboAlgorithm;
+    @FXML private Button btnTrain;
+    @FXML private Button btnExport;
+    @FXML private TextArea txtConsole;
+    @FXML private Label lblRmse;
+    @FXML private Label lblMae;
+    @FXML private ProgressIndicator progressIndicator;
+
+    private final WekaService wekaService;
+    private final ExportService exportService;
+    private MLAlgorithm currentTrainedAlgorithm;
+
+    public TrainController(WekaService wekaService, ExportService exportService) {
+        this.wekaService = wekaService;
+        this.exportService = exportService;
+    }
+
+    @FXML
+    public void initialize() {
+        comboAlgorithm.setItems(FXCollections.observableArrayList(AlgorithmFactory.getAllAlgorithmNames()));
+        comboAlgorithm.getSelectionModel().select(0);
+        btnExport.setDisable(true);
+    }
+
+    @FXML
+    private void handleTrainModel(ActionEvent event) {
+        if (wekaService.getTrainData() == null || wekaService.getTestData() == null) {
+            showAlert("No Data", "Please complete Preprocessing (Step 2) before training.");
+            return;
+        }
+
+        String selectedAlgoName = comboAlgorithm.getValue();
+        MLAlgorithm algorithm = AlgorithmFactory.getAlgorithm(selectedAlgoName);
+
+        // Run training in a background thread to prevent UI freezing
+        txtConsole.setText("Starting training for: " + selectedAlgoName + "...\n");
+        btnTrain.setDisable(true);
+        progressIndicator.setVisible(true);
+
+        Task<Void> trainingTask = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                // 1. Train Model
+                algorithm.train(wekaService.getTrainData());
+                wekaService.setCurrentModel(algorithm.getClassifier());
+
+                // 2. Evaluate Model
+                Evaluation eval = new Evaluation(wekaService.getTrainData());
+                eval.evaluateModel(algorithm.getClassifier(), wekaService.getTestData());
+
+                Platform.runLater(() -> {
+                    lblRmse.setText(String.format("%.4f", eval.rootMeanSquaredError()));
+                    lblMae.setText(String.format("%.4f", eval.meanAbsoluteError()));
+                    txtConsole.appendText(eval.toSummaryString("\nEvaluation Results:\n", false));
+                    
+                    currentTrainedAlgorithm = algorithm;
+                    btnExport.setDisable(false);
+                    btnTrain.setDisable(false);
+                    progressIndicator.setVisible(false);
+                });
+                return null;
+            }
+        };
+
+        trainingTask.setOnFailed(e -> {
+            Throwable error = trainingTask.getException();
+            txtConsole.appendText("\nError during training: " + error.getMessage());
+            btnTrain.setDisable(false);
+            progressIndicator.setVisible(false);
+            error.printStackTrace();
+        });
+
+        new Thread(trainingTask).start();
+    }
+
+    @FXML
+    private void handleExportModel(ActionEvent event) {
+        if (currentTrainedAlgorithm == null) return;
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Save Model Zip");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ZIP Archive", "*.zip"));
+        fileChooser.setInitialFileName(currentTrainedAlgorithm.getName().replaceAll("\\s+", "_") + "_Model.zip");
+
+        File file = fileChooser.showSaveDialog(btnExport.getScene().getWindow());
+        if (file != null) {
+            try {
+                exportService.exportModelAndPreprocessConfig(currentTrainedAlgorithm, file);
+                showAlert("Success", "Model successfully exported to:\n" + file.getAbsolutePath());
+            } catch (Exception e) {
+                showAlert("Expected Error", "Export failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void showAlert(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
+}
+
+
+{DataLoaderUtil.java}
+package com.medical.ml.util;
+
+import weka.core.Instances;
+import weka.core.converters.ArffSaver;
+import weka.core.converters.CSVLoader;
+
+import java.io.File;
+import java.io.IOException;
+
+public class DataLoaderUtil {
+
+    /**
+     * Loads a CSV file and converts it into Weka Instances.
+     *
+     * @param csvFile The source CSV file
+     * @return Weka Instances (ARFF format conceptually)
+     * @throws Exception if loading fails
+     */
+    public static Instances loadCSV(File csvFile) throws Exception {
+        CSVLoader loader = new CSVLoader();
+        loader.setSource(csvFile);
+        loader.setOptions(new String[]{"-charset", "UTF-8"});
+        Instances data = loader.getDataSet();
+        
+        // Assumption: The last attribute is usually the class attribute in ML datasets
+        if (data.classIndex() == -1 && data.numAttributes() > 0) {
+            data.setClassIndex(data.numAttributes() - 1);
+        }
+        
+        return data;
+    }
+
+    /**
+     * Saves Weka Instances to an ARFF file.
+     *
+     * @param data The Instances to save
+     * @param arffFile The destination ARFF file
+     * @throws IOException if saving fails
+     */
+    public static void saveToArff(Instances data, File arffFile) throws IOException {
+        ArffSaver saver = new ArffSaver();
+        saver.setInstances(data);
+        saver.setFile(arffFile);
+        saver.writeBatch();
+    }
+}
+
+
+{DataScanner.java}
+package com.medical.ml.util;
+
+import weka.core.Instances;
+
+public class DataScanner {
+    // Utility methods for scanning dataset features
+    
+    public static void printSummary(Instances data) {
+        System.out.println("Dataset: " + data.relationName());
+        System.out.println("Attributes: " + data.numAttributes());
+        System.out.println("Instances: " + data.numInstances());
+    }
+}
+
+
