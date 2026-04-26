@@ -185,13 +185,72 @@ public class ClassifyTabController {
                     Instances train = new Instances(trainInstance);
 
                     // ==========================================
+                    // FINAL SANITY CHECK: Ensure Class Attribute is Valid
+                    // ==========================================
+                    int classIdx = train.classIndex();
+                    if (classIdx == -1) {
+                        classIdx = train.numAttributes() - 1;
+                        train.setClassIndex(classIdx);
+                    }
+                    
+                    // ==========================================
+                    // DIAGNOSTIC LOGGING: Check integrity before training
+                    // ==========================================
+                    System.out.println("--- PRE-TRAIN INTEGRITY CHECK ---");
+                    System.out.println("Class Index: " + train.classIndex());
+                    if (train.classIndex() != -1) {
+                        weka.core.Attribute cattr = train.classAttribute();
+                        System.out.println("Class Name: " + cattr.name());
+                        System.out.println("Class Type: " + weka.core.Attribute.typeToString(cattr));
+                        System.out.println("Class Num Values: " + cattr.numValues());
+                        for (int i = 0; i < cattr.numValues(); i++) {
+                            System.out.println("  Label[" + i + "]: " + cattr.value(i));
+                        }
+                    }
+                    System.out.println("Total Instances: " + train.numInstances());
+                    System.out.println("---------------------------------");
+
+                    // CRITICAL: If the labels are missing (Length 0) or broken, 
+                    // we perform a "Nominal -> String -> Nominal" roundtrip to force a re-scan.
+                    if (train.classIndex() != -1 && train.classAttribute().isNominal()) {
+                         if (train.classAttribute().numValues() == 0) {
+                             System.out.println("WARNING: Detected broken class attribute labels. Forcing reconstruction...");
+                             weka.filters.unsupervised.attribute.NominalToString nts = new weka.filters.unsupervised.attribute.NominalToString();
+                             nts.setAttributeIndexes("" + (train.classIndex() + 1));
+                             nts.setInputFormat(train);
+                             train = weka.filters.Filter.useFilter(train, nts);
+                             
+                             weka.filters.unsupervised.attribute.StringToNominal stnClass = new weka.filters.unsupervised.attribute.StringToNominal();
+                             stnClass.setAttributeRange("" + (train.classIndex() + 1));
+                             stnClass.setInputFormat(train);
+                             train = weka.filters.Filter.useFilter(train, stnClass);
+                             System.out.println("Reconstruction complete. New labels: " + train.classAttribute().numValues());
+                         }
+                    }
+
+                    // FINAL PROTECTION: Remove ANY nominal attribute that has 0 labels (broken structure)
+                    java.util.List<Integer> brokenIndices = new java.util.ArrayList<>();
+                    for (int i = 0; i < train.numAttributes(); i++) {
+                        if (i != train.classIndex() && train.attribute(i).isNominal() && train.attribute(i).numValues() == 0) {
+                            brokenIndices.add(i);
+                        }
+                    }
+                    if (!brokenIndices.isEmpty()) {
+                        System.out.println("Removing " + brokenIndices.size() + " broken attributes...");
+                        weka.filters.unsupervised.attribute.Remove rmBroken = new weka.filters.unsupervised.attribute.Remove();
+                        int[] bArr = brokenIndices.stream().mapToInt(idx -> idx).toArray();
+                        rmBroken.setAttributeIndicesArray(bArr);
+                        rmBroken.setInputFormat(train);
+                        train = weka.filters.Filter.useFilter(train, rmBroken);
+                    }
+
+                    // ==========================================
                     // ANTI-OOM SAFETY NET (Auto-Removal)
-                    // High-cardinality nominals (e.g. IDs, UUIDs, Dates) cause 
-                    // RandomTree/REPTree to allocate N-branches * N-instances, requiring ~8GB+ RAM.
                     // ==========================================
                     java.util.List<Integer> badIndices = new java.util.ArrayList<>();
                     StringBuilder removedNames = new StringBuilder();
                     for (int i = 0; i < train.numAttributes(); i++) {
+                        // Never remove the class attribute, but remove other high-cardinality nominals
                         if (i != train.classIndex() && train.attribute(i).isNominal() && train.attribute(i).numValues() > 500) {
                             badIndices.add(i);
                             removedNames.append(train.attribute(i).name()).append(", ");

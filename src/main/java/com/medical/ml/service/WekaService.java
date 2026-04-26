@@ -155,22 +155,45 @@ public class WekaService {
                 data.setClassIndex(data.numAttributes() - 1);
             }
 
-            // Smart Target Conversion: If the class is numeric but has few unique values, 
-            // it's likely a categorical target (e.g., 0/1) for classification.
+            // Target Safety Check: 
+            // After changing 0/1 to N/Y, we must ensure the class attribute is Nominal 
+            // and contains valid labels (N, Y). 
             int classIdx = data.classIndex();
-            if (classIdx != -1 && data.attribute(classIdx).isNumeric()) {
+            if (classIdx != -1) {
                 weka.core.Attribute classAttr = data.attribute(classIdx);
-                java.util.Set<Double> uniqueValues = new java.util.HashSet<>();
-                for (int i = 0; i < Math.min(data.numInstances(), 1000); i++) {
-                    uniqueValues.add(data.instance(i).value(classAttr));
-                    if (uniqueValues.size() > 15) break; 
+                
+                // 1. If it's a String, force it to Nominal
+                if (classAttr.isString()) {
+                    weka.filters.unsupervised.attribute.StringToNominal stn = new weka.filters.unsupervised.attribute.StringToNominal();
+                    stn.setAttributeRange("" + (classIdx + 1));
+                    stn.setInputFormat(data);
+                    data = weka.filters.Filter.useFilter(data, stn);
+                    classAttr = data.attribute(classIdx);
                 }
                 
-                if (uniqueValues.size() <= 15) {
-                    weka.filters.unsupervised.attribute.NumericToNominal ntn = new weka.filters.unsupervised.attribute.NumericToNominal();
-                    ntn.setAttributeIndices("" + (classIdx + 1));
-                    ntn.setInputFormat(data);
-                    data = weka.filters.Filter.useFilter(data, ntn);
+                // 2. If it's Numeric but looks like binary (0/1), convert it
+                if (classAttr.isNumeric()) {
+                    java.util.Set<Double> uniqueValues = new java.util.HashSet<>();
+                    for (int i = 0; i < Math.min(data.numInstances(), 1000); i++) {
+                        uniqueValues.add(data.instance(i).value(classAttr));
+                        if (uniqueValues.size() > 15) break; 
+                    }
+                    if (uniqueValues.size() <= 15) {
+                        weka.filters.unsupervised.attribute.NumericToNominal ntn = new weka.filters.unsupervised.attribute.NumericToNominal();
+                        ntn.setAttributeIndices("" + (classIdx + 1));
+                        ntn.setInputFormat(data);
+                        data = weka.filters.Filter.useFilter(data, ntn);
+                    }
+                }
+                
+                // 3. Final validation: if Nominal but empty labels, force a re-scan
+                if (data.attribute(classIdx).isNominal() && data.attribute(classIdx).numValues() == 0) {
+                    // This is rare but causes the "Index 0 out of bounds" error.
+                    // We'll force it through StringToNominal to re-extract labels.
+                    weka.filters.unsupervised.attribute.StringToNominal stn = new weka.filters.unsupervised.attribute.StringToNominal();
+                    stn.setAttributeRange("" + (classIdx + 1));
+                    stn.setInputFormat(data);
+                    data = weka.filters.Filter.useFilter(data, stn);
                 }
             }
         } catch (Exception e) {
