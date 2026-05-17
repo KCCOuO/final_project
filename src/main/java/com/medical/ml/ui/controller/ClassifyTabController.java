@@ -244,19 +244,51 @@ public class ClassifyTabController {
                     }
 
                     // ==========================================
-                    // MEMORY-SAFE ANTI-OOM NET (Direct Removal)
+                    // MEMORY-SAFE ANTI-OOM NET (Sampling Pearson Correlation)
                     // ==========================================
                     // Because the dataset is huge (100k+ instances) and the computer has 8GB RAM,
-                    // running CorrelationAttributeEval will crash the JVM.
-                    // We unconditionally remove nominal attributes with > 500 values (usually IDs or noise).
+                    // running CorrelationAttributeEval on full data crashes the JVM.
+                    // Instead, we extract a random sample of 5,000 instances to safely calculate the Pearson Correlation.
                     java.util.List<Integer> badIndices = new java.util.ArrayList<>();
                     StringBuilder removedNames = new StringBuilder();
                     StringBuilder keptNames = new StringBuilder();
                     
-                    for (int i = 0; i < train.numAttributes(); i++) {
-                        if (i != train.classIndex() && train.attribute(i).isNominal() && train.attribute(i).numValues() > 500) {
-                            badIndices.add(i);
-                            removedNames.append(train.attribute(i).name()).append(" (cardinality > 500), ");
+                    try {
+                        System.out.println("Building 5,000 instances sample for memory-safe Pearson Correlation check...");
+                        Instances sampleForCorr = new Instances(train, 0);
+                        java.util.Random rand = new java.util.Random(42);
+                        int sampleSize = Math.min(train.numInstances(), 5000);
+                        java.util.List<Integer> shuffleIndices = new java.util.ArrayList<>();
+                        for (int k = 0; k < train.numInstances(); k++) shuffleIndices.add(k);
+                        java.util.Collections.shuffle(shuffleIndices, rand);
+                        for (int k = 0; k < sampleSize; k++) {
+                            sampleForCorr.add(train.instance(shuffleIndices.get(k)));
+                        }
+
+                        weka.attributeSelection.CorrelationAttributeEval corrEval = new weka.attributeSelection.CorrelationAttributeEval();
+                        corrEval.buildEvaluator(sampleForCorr);
+                        
+                        for (int i = 0; i < train.numAttributes(); i++) {
+                            // Target high-cardinality nominals
+                            if (i != train.classIndex() && train.attribute(i).isNominal() && train.attribute(i).numValues() > 100) {
+                                double corr = Math.abs(corrEval.evaluateAttribute(i));
+                                // Threshold: If correlation is weak (< 0.05) or NaN, drop to prevent OOM
+                                if (Double.isNaN(corr) || corr < 0.05) {
+                                    badIndices.add(i);
+                                    removedNames.append(train.attribute(i).name()).append(String.format(" (corr: %.3f), ", corr));
+                                } else {
+                                    keptNames.append(train.attribute(i).name()).append(String.format(" (corr: %.3f), ", corr));
+                                }
+                            }
+                        }
+                    } catch (Exception ex) {
+                        System.out.println("Warning: Correlation check failed, falling back to strict OOM removal.");
+                        ex.printStackTrace();
+                        for (int i = 0; i < train.numAttributes(); i++) {
+                            if (i != train.classIndex() && train.attribute(i).isNominal() && train.attribute(i).numValues() > 500) {
+                                badIndices.add(i);
+                                removedNames.append(train.attribute(i).name()).append(" (fallback), ");
+                            }
                         }
                     }
                     
