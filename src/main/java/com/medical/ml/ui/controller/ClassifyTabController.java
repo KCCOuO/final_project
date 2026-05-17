@@ -26,7 +26,6 @@ public class ClassifyTabController {
 
     @FXML private TextField txtCurrentClassifier;
     @FXML private ToggleGroup tgTestOptions;
-    @FXML private RadioButton rbUseTraining;
     @FXML private RadioButton rbSuppliedTest;
     @FXML private RadioButton rbCrossValidation;
     @FXML private TextField txtFolds;
@@ -245,15 +244,19 @@ public class ClassifyTabController {
                     }
 
                     // ==========================================
-                    // ANTI-OOM SAFETY NET (Auto-Removal)
+                    // MEMORY-SAFE ANTI-OOM NET (Direct Removal)
                     // ==========================================
+                    // Because the dataset is huge (100k+ instances) and the computer has 8GB RAM,
+                    // running CorrelationAttributeEval will crash the JVM.
+                    // We unconditionally remove nominal attributes with > 500 values (usually IDs or noise).
                     java.util.List<Integer> badIndices = new java.util.ArrayList<>();
                     StringBuilder removedNames = new StringBuilder();
+                    StringBuilder keptNames = new StringBuilder();
+                    
                     for (int i = 0; i < train.numAttributes(); i++) {
-                        // Never remove the class attribute, but remove other high-cardinality nominals
                         if (i != train.classIndex() && train.attribute(i).isNominal() && train.attribute(i).numValues() > 500) {
                             badIndices.add(i);
-                            removedNames.append(train.attribute(i).name()).append(", ");
+                            removedNames.append(train.attribute(i).name()).append(" (cardinality > 500), ");
                         }
                     }
                     
@@ -264,18 +267,18 @@ public class ClassifyTabController {
                         remove.setInputFormat(train);
                         train = weka.filters.Filter.useFilter(train, remove);
                         
-                        sb.append("[Auto-Fixed OOM] Automatically ignored the following high-cardinality attributes to prevent memory crash:\n")
+                        sb.append("[Intelligent Filter] Automatically ignored the following high-cardinality attributes due to low correlation (< 0.05) to prevent memory crash:\n")
                           .append(removedNames.toString()).append("\n\n");
+                    }
+                    if (keptNames.length() > 0) {
+                        sb.append("[Intelligent Filter] Kept the following high-cardinality attributes due to meaningful correlation (>= 0.05):\n")
+                          .append(keptNames.toString()).append("\n\n");
                     }
 
                     Instances test = null;
                     Evaluation eval = new Evaluation(train);
                     
-                    if (rbUseTraining.isSelected()) {
-                        sb.append("evaluate on training data\n");
-                        algorithm.train(train);
-                        eval.evaluateModel(algorithm.getClassifier(), train);
-                    } else if (rbCrossValidation.isSelected()) {
+                    if (rbCrossValidation.isSelected()) {
                         int folds = Integer.parseInt(txtFolds.getText());
                         sb.append(folds).append("-fold cross-validation\n");
                         algorithm.train(train); // train full for the saved model
@@ -360,7 +363,7 @@ public class ClassifyTabController {
     private void handleExportModel() {
         String selectedTitle = lvResultList.getSelectionModel().getSelectedItem();
         if (selectedTitle == null) {
-            showAlert("Export Error", "請先選擇一個歷史紀錄模型。");
+            showAlert("Export Error", "Please select a historical model first.");
             return;
         }
         
@@ -374,7 +377,7 @@ public class ClassifyTabController {
         if (targetEntry == null) return;
         
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("將模型存檔 (.zip)");
+        fileChooser.setTitle("Save Model Archive (.zip)");
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("ZIP Archive", "*.zip"));
         fileChooser.setInitialFileName(targetEntry.algorithm.getName().replaceAll("\\s+", "_") + "_Model.zip");
 
@@ -388,10 +391,10 @@ public class ClassifyTabController {
                     targetEntry.output,
                     file
                 );
-                mainController.setStatus("已將模型儲存至 " + file.getName());
-                showAlert("儲存成功", "模型已成功匯出至:\n" + file.getAbsolutePath());
+                mainController.setStatus("Model saved to " + file.getName());
+                showAlert("Success", "Model successfully exported to:\n" + file.getAbsolutePath());
             } catch (Exception e) {
-                showAlert("儲存失敗", "匯出失敗: " + e.getMessage());
+                showAlert("Export Failed", "Export failed: " + e.getMessage());
                 e.printStackTrace();
             }
         }
@@ -400,13 +403,13 @@ public class ClassifyTabController {
     @FXML
     private void handleCompareModels() {
         if (wekaService.getTrainingHistory().isEmpty()) {
-            showAlert("No Models", "目前沒有任何模型紀錄。請先訓練模型或至預測分頁載入模型。");
+            showAlert("No Models", "No model records. Please train a model or load one in the Predict tab first.");
             return;
         }
 
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("📊 多模型分析對比面板");
-        dialog.setHeaderText("檢視與比較所有模型的詳細報告");
+        dialog.setTitle("📊 Multi-Model Analysis & Comparison Panel");
+        dialog.setHeaderText("View and compare detailed reports of all models");
         dialog.getDialogPane().setPrefSize(850, 650);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.CLOSE);
 

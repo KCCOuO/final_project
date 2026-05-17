@@ -53,24 +53,30 @@ public class WekaService {
                 try {
                     int numClasses = eval.confusionMatrix().length;
                     if (numClasses == 2) {
-                        // Binary classification: show recall for each class
+                        // Binary classification: show recall and F1 for each class
                         double r0 = eval.recall(0) * 100;
                         double r1 = eval.recall(1) * 100;
-                        return String.format("%s - Acc: %.1f%% | R(0): %.1f%% | R(1): %.1f%%",
-                            algorithm.getName(), eval.pctCorrect(), r0, r1);
+                        double f1 = eval.fMeasure(1) * 100; // Usually index 1 is the 'Yes' or positive class
+                        return String.format("%s - Acc: %.1f%% | F1: %.1f%% | R(0): %.1f%% | R(1): %.1f%%",
+                            algorithm.getName(), eval.pctCorrect(), f1, r0, r1);
                     } else {
-                        // Multi-class: show macro-average recall
-                        double sum = 0;
-                        for (int i = 0; i < numClasses; i++) sum += eval.recall(i);
-                        double macroRecall = (sum / numClasses) * 100;
-                        return String.format("%s - Acc: %.1f%% | Macro Recall: %.1f%%",
-                            algorithm.getName(), eval.pctCorrect(), macroRecall);
+                        // Multi-class: show macro-average recall and F1
+                        double recallSum = 0;
+                        double f1Sum = 0;
+                        for (int i = 0; i < numClasses; i++) {
+                            recallSum += eval.recall(i);
+                            f1Sum += eval.fMeasure(i);
+                        }
+                        double macroRecall = (recallSum / numClasses) * 100;
+                        double macroF1 = (f1Sum / numClasses) * 100;
+                        return String.format("%s - Acc: %.1f%% | F1: %.1f%% | Macro Recall: %.1f%%",
+                            algorithm.getName(), eval.pctCorrect(), macroF1, macroRecall);
                     }
                 } catch (Exception e) {
                     return String.format("%s - Acc: %.1f%%", algorithm.getName(), eval.pctCorrect());
                 }
             } else {
-                return String.format("%s (本機載入)", algorithm.getName());
+                return String.format("%s (Local Load)", algorithm.getName());
             }
         }
     }

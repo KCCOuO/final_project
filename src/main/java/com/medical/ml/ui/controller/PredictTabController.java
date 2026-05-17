@@ -71,7 +71,7 @@ public class PredictTabController {
             lblCurrentModel.setText("Ready: " + algoName);
             lblCurrentModel.setTextFill(javafx.scene.paint.Color.GREEN);
         } else {
-            lblCurrentModel.setText("尚未載入任何模型。");
+            lblCurrentModel.setText("No model loaded yet.");
             lblCurrentModel.setTextFill(javafx.scene.paint.Color.RED);
         }
     }
@@ -88,12 +88,12 @@ public class PredictTabController {
                 ExportService.ImportedModel imp = exportService.importModelConfig(file);
                 
                 String timeStr = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
-                String resTitle = timeStr + " - [載入] " + imp.classifier.getClass().getSimpleName();
+                String resTitle = timeStr + " - [Loaded] " + imp.classifier.getClass().getSimpleName();
                 
                 com.medical.ml.ml.algorithm.MLAlgorithm fakeAlgo = new com.medical.ml.ml.algorithm.MLAlgorithm() {
                     @Override public void train(Instances data) {}
                     @Override public weka.classifiers.Classifier getClassifier() { return imp.classifier; }
-                    @Override public String getName() { return "[載入] " + imp.classifier.getClass().getSimpleName(); }
+                    @Override public String getName() { return "[Loaded] " + imp.classifier.getClass().getSimpleName(); }
                 };
                 
                 WekaService.ResultEntry entry = new WekaService.ResultEntry(fakeAlgo, null, imp.report, imp.header);
@@ -101,7 +101,7 @@ public class PredictTabController {
                 wekaService.getTrainingHistory().add(entry);
                 comboHistory.getSelectionModel().select(entry); // auto-select it
                 
-                showAlert(Alert.AlertType.INFORMATION, "Success", "模型成功匯入！\n已將其添加至歷史模型清單中。");
+                showAlert(Alert.AlertType.INFORMATION, "Success", "Model successfully imported!\nAdded to the history model list.");
             } catch (Exception e) {
                 e.printStackTrace();
                 showAlert(Alert.AlertType.ERROR, "Error Loading Model", e.getMessage());
@@ -112,16 +112,16 @@ public class PredictTabController {
     @FXML
     private void handleCompareModels() {
         if (wekaService.getTrainingHistory().isEmpty()) {
-            showAlert(Alert.AlertType.WARNING, "No Models", "目前沒有任何模型紀錄可供比較！請先上傳本地檔案或去訓練分頁訓練一個。");
+            showAlert(Alert.AlertType.WARNING, "No Models", "No model records available for comparison! Please upload a local file or train one in the Classify tab first.");
             return;
         }
 
         Dialog<WekaService.ResultEntry> dialog = new Dialog<>();
-        dialog.setTitle("📊 多模型預覽與對比 (Local Models)");
-        dialog.setHeaderText("您可以檢視各個本地模型的分析報告，並選擇要使用的模型。");
+        dialog.setTitle("📊 Multi-Model Preview & Comparison (Local Models)");
+        dialog.setHeaderText("You can view the analysis reports of local models and select the one to use.");
         dialog.getDialogPane().setPrefSize(850, 650);
 
-        ButtonType selectButtonType = new ButtonType("✅ 選擇此模型 (Use This Model)", ButtonBar.ButtonData.OK_DONE);
+        ButtonType selectButtonType = new ButtonType("✅ Use This Model", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(selectButtonType, ButtonType.CANCEL);
 
         TabPane tabPane = new TabPane();
@@ -165,7 +165,7 @@ public class PredictTabController {
 
         dialog.showAndWait().ifPresent(entry -> {
             comboHistory.getSelectionModel().select(entry); // The combo's onAction will handle setting activeModel
-            showAlert(Alert.AlertType.INFORMATION, "Success", "已成功套用所選模型！");
+            showAlert(Alert.AlertType.INFORMATION, "Success", "Successfully applied the selected model!");
         });
     }
 
@@ -255,7 +255,7 @@ public class PredictTabController {
                     String predictedLabel = header.classAttribute().value((int) pred);
                     double confidence = dist[(int) pred] * 100.0;
 
-                    return String.format("預測結果: %s\n模型信心度: %.2f%%\n(信心度為模型對此預測的把握程度)", predictedLabel, confidence);
+                    return String.format("Prediction Result: %s\nConfidence: %.2f%%\n(Confidence indicates the certainty of the model's prediction)", predictedLabel, confidence);
                 } catch (Exception e) {
                     e.printStackTrace();
                     return "Error: " + e.getMessage();

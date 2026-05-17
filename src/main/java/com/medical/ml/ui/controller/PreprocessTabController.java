@@ -140,6 +140,27 @@ public class PreprocessTabController {
         
         List<File> selectedFiles = fileChooser.showOpenMultipleDialog(txtRelationName.getScene().getWindow());
         if (selectedFiles != null && !selectedFiles.isEmpty()) {
+            
+            boolean appendMode = false;
+            if (wekaService.getOriginalData() != null) {
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                alert.setTitle("Merge Data Confirmation");
+                alert.setHeaderText("There is already data loaded in memory. Do you want to Append the new file(s) or Replace the existing data?");
+                
+                ButtonType btnAppend = new ButtonType("Append");
+                ButtonType btnReplace = new ButtonType("Replace");
+                ButtonType btnCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+                
+                alert.getButtonTypes().setAll(btnAppend, btnReplace, btnCancel);
+                
+                Optional<ButtonType> result = alert.showAndWait();
+                if (result.isPresent() && result.get() == btnCancel) {
+                    return;
+                }
+                appendMode = (result.isPresent() && result.get() == btnAppend);
+            }
+            final boolean finalAppendMode = appendMode;
+            
             try {
                 mainController.setStatus("Reading file(s)... This may take a while.");
                 mainController.setProgressVisible(true);
@@ -158,7 +179,13 @@ public class PreprocessTabController {
                 javafx.concurrent.Task<Instances> loadTask = new javafx.concurrent.Task<Instances>() {
                     @Override
                     protected Instances call() throws Exception {
-                        Instances data = DataLoaderUtil.mergeCSVFiles(selectedFiles);
+                        Instances data;
+                        if (finalAppendMode) {
+                            data = DataLoaderUtil.mergeInstancesWithFiles(wekaService.getOriginalData(), selectedFiles);
+                        } else {
+                            data = DataLoaderUtil.mergeCSVFiles(selectedFiles);
+                        }
+                        
                         if (data != null) {
                             data.setRelationName(finalRelationName);
                         }
@@ -317,13 +344,13 @@ public class PreprocessTabController {
     @FXML
     private void handleChooseFilter() {
         List<String> choices = Arrays.asList(
-            "補齊缺失數據 (ReplaceMissingValues): 自動填補空白欄位，修復LMT等演算法閃退",
-            "數值轉分類標籤 (NumericToNominal): 將連續數值(如0,1)強制轉換為獨立類別",
-            "類別權重平衡 (ClassBalancer): 調整罕見疾病權重，避免AI忽視少數案例"
+            "ReplaceMissingValues",
+            "NumericToNominal",
+            "ClassBalancer"
         );
         ChoiceDialog<String> dialog = new ChoiceDialog<>(choices.get(0), choices);
-        dialog.setTitle("選擇資料處理工具");
-        dialog.setHeaderText("請為您的醫療數據選擇適合的處理工具");
+        dialog.setTitle("Select Preprocessing Tool");
+        dialog.setHeaderText("Choose a tool for data preprocessing");
         dialog.showAndWait().ifPresent(choice -> txtCurrentFilter.setText(choice));
     }
 

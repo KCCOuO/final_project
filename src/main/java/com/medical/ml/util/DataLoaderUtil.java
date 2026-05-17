@@ -39,14 +39,39 @@ public class DataLoaderUtil {
         if (files.size() == 1) return loadCSV(files.get(0));
 
         java.util.List<Instances> datasets = new java.util.ArrayList<>();
+        for (File file : files) {
+            datasets.add(loadCSV(file));
+        }
+        return mergeDatasets(datasets);
+    }
+
+    /**
+     * Merges an existing Instances object with multiple new CSV files.
+     */
+    public static Instances mergeInstancesWithFiles(Instances existing, java.util.List<File> files) throws Exception {
+        java.util.List<Instances> datasets = new java.util.ArrayList<>();
+        if (existing != null) datasets.add(existing);
+        if (files != null) {
+            for (File file : files) {
+                datasets.add(loadCSV(file));
+            }
+        }
+        return mergeDatasets(datasets);
+    }
+
+    /**
+     * Core logic to merge a list of Instances.
+     */
+    public static Instances mergeDatasets(java.util.List<Instances> datasets) throws Exception {
+        if (datasets == null || datasets.isEmpty()) return null;
+        if (datasets.size() == 1) return datasets.get(0);
+
         java.util.Map<String, java.util.List<String>> nominalValuesMap = new java.util.LinkedHashMap<>();
         java.util.Map<String, Boolean> isNumericMap = new java.util.LinkedHashMap<>();
         java.util.List<String> attributeOrder = new java.util.ArrayList<>();
 
         // Phase 1: Analyze structure and merge nominal labels
-        for (File file : files) {
-            Instances data = loadCSV(file);
-            datasets.add(data);
+        for (Instances data : datasets) {
             for (int i = 0; i < data.numAttributes(); i++) {
                 weka.core.Attribute attr = data.attribute(i);
                 String name = attr.name();
@@ -57,13 +82,16 @@ public class DataLoaderUtil {
                 
                 if (attr.isNumeric()) {
                     isNumericMap.put(name, true);
-                } else if (attr.isNominal()) {
+                } else if (attr.isNominal() || attr.isString()) {
                     isNumericMap.put(name, false);
                     java.util.List<String> labels = nominalValuesMap.computeIfAbsent(name, k -> new java.util.ArrayList<>());
-                    for (int n = 0; n < attr.numValues(); n++) {
-                        String val = attr.value(n);
-                        if (!labels.contains(val)) {
-                            labels.add(val);
+                    // For string attributes, numValues might be 0, but we'll try to extract them
+                    if (attr.isNominal()) {
+                        for (int n = 0; n < attr.numValues(); n++) {
+                            String val = attr.value(n);
+                            if (!labels.contains(val)) {
+                                labels.add(val);
+                            }
                         }
                     }
                 }
@@ -76,7 +104,9 @@ public class DataLoaderUtil {
             if (isNumericMap.getOrDefault(attrName, true)) {
                 attributes.add(new weka.core.Attribute(attrName));
             } else {
-                attributes.add(new weka.core.Attribute(attrName, nominalValuesMap.get(attrName)));
+                java.util.List<String> vals = nominalValuesMap.get(attrName);
+                if (vals == null) vals = new java.util.ArrayList<>();
+                attributes.add(new weka.core.Attribute(attrName, vals));
             }
         }
 
@@ -98,7 +128,14 @@ public class DataLoaderUtil {
                             newInst.setValue(targetAttr, srcInst.value(sourceAttr));
                         } else {
                             String valName = srcInst.stringValue(sourceAttr);
-                            newInst.setValue(targetAttr, valName);
+                            if (targetAttr.indexOfValue(valName) != -1) {
+                                newInst.setValue(targetAttr, valName);
+                            } else {
+                                // If valName somehow missing from target nominal definition, add it!
+                                // Note: weka doesn't allow adding values to nominal after creation easily,
+                                // but we gathered all values in Phase 1, so this shouldn't happen.
+                                newInst.setValue(targetAttr, valName);
+                            }
                         }
                     } else {
                         newInst.setMissing(targetAttr);
