@@ -307,6 +307,29 @@ public class ClassifyTabController {
                           .append(keptNames.toString()).append("\n\n");
                     }
 
+                    // ==========================================
+                    // AUTOMATIC IMBALANCE CORRECTION (Class Balancer)
+                    // ==========================================
+                    if (train.classAttribute().isNominal()) {
+                        int[] counts = train.attributeStats(train.classIndex()).nominalCounts;
+                        if (counts != null && counts.length > 1) {
+                            int minCount = Integer.MAX_VALUE;
+                            for (int c : counts) {
+                                if (c < minCount) minCount = c;
+                            }
+                            double minorityRatio = (double) minCount / train.numInstances();
+                            if (minorityRatio < 0.15) {
+                                System.out.println("Imbalance detected (ratio: " + minorityRatio + "). Automatically balancing class weights...");
+                                weka.filters.supervised.instance.ClassBalancer balancer = new weka.filters.supervised.instance.ClassBalancer();
+                                balancer.setInputFormat(train);
+                                train = weka.filters.Filter.useFilter(train, balancer);
+                                sb.append("[Intelligent Balancing] Imbalanced dataset detected (minority ratio: ")
+                                  .append(String.format("%.2f%%", minorityRatio * 100))
+                                  .append("). Automatically applied ClassBalancer to optimize Recall and F1-Score!\n\n");
+                            }
+                        }
+                    }
+
                     Instances test = null;
                     Evaluation eval = new Evaluation(train);
                     

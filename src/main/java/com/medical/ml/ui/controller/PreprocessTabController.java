@@ -392,6 +392,9 @@ public class PreprocessTabController {
                 }
 
                 if (filter != null) {
+                    if (data.classIndex() == -1) {
+                        data.setClassIndex(data.numAttributes() - 1);
+                    }
                     filter.setInputFormat(data);
                     Instances res = weka.filters.Filter.useFilter(data, filter);
                     // Do not block UI with setOriginalData logic
