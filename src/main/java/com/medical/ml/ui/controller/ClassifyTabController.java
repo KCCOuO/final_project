@@ -59,12 +59,10 @@ public class ClassifyTabController {
         // Removed local Context Menu for saving/loading since it's now in Predict Tab
         
         wekaService.getTrainingHistory().addListener((javafx.collections.ListChangeListener.Change<? extends WekaService.ResultEntry> c) -> {
-            while (c.next()) {
-                if (c.wasAdded()) {
-                    for (WekaService.ResultEntry entry : c.getAddedSubList()) {
-                        lvResultList.getItems().add(entry.toString());
-                    }
-                }
+            // Repopulate the entire list to ensure dynamic toString() logic (like Best Model emoji) is refreshed for ALL items
+            lvResultList.getItems().clear();
+            for (WekaService.ResultEntry entry : wekaService.getTrainingHistory()) {
+                lvResultList.getItems().add(entry.toString());
             }
         });
         
@@ -155,11 +153,60 @@ public class ClassifyTabController {
             tempAlgo = algorithmFactory.getAlgorithm(algorithmFactory.getAllAlgorithmNames().get(0));
             txtCurrentClassifier.setText(tempAlgo.getName());
         }
-        final MLAlgorithm algorithm = tempAlgo;
 
         int classIndex = comboTargetClass.getSelectionModel().getSelectedIndex();
         if (classIndex == -1) classIndex = data.numAttributes() - 1;
         data.setClassIndex(classIndex);
+
+        // Dynamic Imbalance Detection for Cost-Sensitive wrapping
+        boolean isImbalanced = false;
+        if (data.classAttribute().isNominal()) {
+            int[] counts = data.attributeStats(classIndex).nominalCounts;
+            if (counts != null && counts.length > 1) {
+                int minCount = Integer.MAX_VALUE;
+                for (int c : counts) {
+                    if (c < minCount) minCount = c;
+                }
+                double minorityRatio = (double) minCount / data.numInstances();
+                if (minorityRatio < 0.15) {
+                    isImbalanced = true;
+                }
+            }
+        }
+
+        final MLAlgorithm algorithm;
+        if (isImbalanced) {
+            final MLAlgorithm baseAlgo = tempAlgo;
+            algorithm = new MLAlgorithm() {
+                private weka.classifiers.meta.CostSensitiveClassifier csc;
+                @Override
+                public void train(Instances trainData) throws Exception {
+                    baseAlgo.train(trainData);
+                    csc = new weka.classifiers.meta.CostSensitiveClassifier();
+                    csc.setClassifier(baseAlgo.getClassifier());
+                    
+                    // Create Cost Matrix: 2x2 for Nominal target class
+                    // Row is actual class, Column is predicted class.
+                    // Class 0 = N, Class 1 = Y
+                    // Penalty for False Negative (FN, Row 1 Col 0) = 3.0
+                    weka.classifiers.CostMatrix costMatrix = new weka.classifiers.CostMatrix(2);
+                    costMatrix.setCell(0, 0, 0.0);
+                    costMatrix.setCell(0, 1, 1.0);
+                    costMatrix.setCell(1, 0, 3.0); // Penalty for FN
+                    costMatrix.setCell(1, 1, 0.0);
+                    
+                    csc.setCostMatrix(costMatrix);
+                    csc.setMinimizeExpectedCost(false); // weighting during training
+                    csc.buildClassifier(trainData);
+                }
+                @Override
+                public weka.classifiers.Classifier getClassifier() { return csc; }
+                @Override
+                public String getName() { return baseAlgo.getName() + " (Cost-Sensitive)"; }
+            };
+        } else {
+            algorithm = tempAlgo;
+        }
         
         Instances trainInstance = data;
 
@@ -308,7 +355,7 @@ public class ClassifyTabController {
                     }
 
                     // ==========================================
-                    // AUTOMATIC IMBALANCE CORRECTION (Class Balancer)
+                    // AUTOMATIC IMBALANCE CORRECTION (Cost-Sensitive Reporting)
                     // ==========================================
                     if (train.classAttribute().isNominal()) {
                         int[] counts = train.attributeStats(train.classIndex()).nominalCounts;
@@ -319,13 +366,9 @@ public class ClassifyTabController {
                             }
                             double minorityRatio = (double) minCount / train.numInstances();
                             if (minorityRatio < 0.15) {
-                                System.out.println("Imbalance detected (ratio: " + minorityRatio + "). Automatically balancing class weights...");
-                                weka.filters.supervised.instance.ClassBalancer balancer = new weka.filters.supervised.instance.ClassBalancer();
-                                balancer.setInputFormat(train);
-                                train = weka.filters.Filter.useFilter(train, balancer);
                                 sb.append("[Intelligent Balancing] Imbalanced dataset detected (minority ratio: ")
                                   .append(String.format("%.2f%%", minorityRatio * 100))
-                                  .append("). Automatically applied ClassBalancer to optimize Recall and F1-Score!\n\n");
+                                  .append("). Automatically applied Cost-Sensitive Learning (FN Penalty: 3.0) to minimize critical under-diagnosis of Class Y!\n\n");
                             }
                         }
                     }

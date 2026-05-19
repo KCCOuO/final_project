@@ -207,9 +207,11 @@ public class PredictTabController {
                 inputNodes.add(tf);
             } else if (attr.isNominal()) {
                 ComboBox<String> cb = new ComboBox<>();
+                cb.getItems().add(""); // Support missing value option explicitly
                 for (int j = 0; j < attr.numValues(); j++) {
                     cb.getItems().add(attr.value(j));
                 }
+                cb.setEditable(true); // Allow typing instead of just selecting!
                 cb.getSelectionModel().selectFirst();
                 grid.add(cb, 1, rowIndex);
                 inputNodes.add(cb);
@@ -244,8 +246,15 @@ public class PredictTabController {
                             }
                         } else if (attr.isNominal()) {
                             String val = ((ComboBox<String>) node).getValue();
-                            if (val == null) mapped.setMissing(attr);
-                            else mapped.setValue(attr, val);
+                            if (val == null || val.trim().isEmpty()) {
+                                mapped.setMissing(attr);
+                            } else {
+                                try {
+                                    mapped.setValue(attr, val);
+                                } catch (Exception ex) {
+                                    throw new RuntimeException("Invalid value '" + val + "' for attribute '" + attr.name() + "'. The model was trained treating this as a category, so the value must exactly match one of the predefined options.");
+                                }
+                            }
                         }
                     }
 
@@ -266,12 +275,16 @@ public class PredictTabController {
 
         dialog.showAndWait().ifPresent(result -> {
             Alert a = new Alert(result.startsWith("Error") ? Alert.AlertType.ERROR : Alert.AlertType.INFORMATION);
-            a.setTitle("Prediction Result");
+            a.setTitle(result.startsWith("Error") ? "Prediction Error" : "Prediction Result");
             a.setHeaderText(null);
-            a.setContentText(result);
-            if (!result.startsWith("Error")) {
-                a.getDialogPane().setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
-            }
+            
+            Label label = new Label(result);
+            label.setWrapText(true);
+            label.setStyle("-fx-font-size: 13px;");
+            
+            a.getDialogPane().setContent(label);
+            a.getDialogPane().setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+            
             a.showAndWait();
         });
     }
@@ -329,7 +342,19 @@ public class PredictTabController {
                                 if (requiredAttr.isNumeric()) {
                                     try { mapped.setValue(requiredAttr, src.value(srcAttr)); } catch (Exception ex) {}
                                 } else if (requiredAttr.isNominal() || requiredAttr.isString()) {
-                                    String val = src.stringValue(srcAttr);
+                                    String val;
+                                    if (srcAttr.isNumeric()) {
+                                        // Handle case where CSV loader parses as Numeric, but Model expects Nominal
+                                        double dVal = src.value(srcAttr);
+                                        if (dVal == (long) dVal) {
+                                            val = String.valueOf((long) dVal);
+                                        } else {
+                                            val = String.valueOf(dVal);
+                                        }
+                                    } else {
+                                        val = src.stringValue(srcAttr);
+                                    }
+                                    
                                     int targetValIdx = requiredAttr.indexOfValue(val);
                                     if (targetValIdx >= 0) {
                                         mapped.setValue(requiredAttr, targetValIdx);
@@ -389,7 +414,14 @@ public class PredictTabController {
             Alert alert = new Alert(type);
             alert.setTitle(title);
             alert.setHeaderText(null);
-            alert.setContentText(content);
+            
+            Label label = new Label(content);
+            label.setWrapText(true);
+            label.setStyle("-fx-font-size: 13px;");
+            
+            alert.getDialogPane().setContent(label);
+            alert.getDialogPane().setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+            
             alert.show();
         });
     }

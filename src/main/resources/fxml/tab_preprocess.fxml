@@ -17,7 +17,6 @@
         <Label text="Filter" style="-fx-font-weight: bold;"/>
         <Button text="Choose" onAction="#handleChooseFilter"/>
         <TextField fx:id="txtCurrentFilter" text="None" editable="false" HBox.hgrow="ALWAYS" style="-fx-background-color: #fff; -fx-border-color: #ccc;"/>
-        <Button text="Apply" onAction="#handleApplyFilter"/>
     </HBox>
 
     <SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.4">

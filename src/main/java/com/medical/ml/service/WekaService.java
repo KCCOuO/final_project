@@ -26,6 +26,7 @@ public class WekaService {
 
     public WekaService(SessionState sessionState) {
         this.sessionState = sessionState;
+        instance = this;
     }
 
     public static class SharedModel {
@@ -47,31 +48,55 @@ public class WekaService {
             this.header = header;
         }
 
+        public double getF1() {
+            if (eval == null) return 0;
+            try {
+                int numClasses = eval.confusionMatrix().length;
+                if (numClasses == 2) {
+                    return eval.fMeasure(1) * 100;
+                } else {
+                    double f1Sum = 0;
+                    for (int i = 0; i < numClasses; i++) f1Sum += eval.fMeasure(i);
+                    return (f1Sum / numClasses) * 100;
+                }
+            } catch (Exception e) { return 0; }
+        }
+
+        public double getAccuracy() {
+            return eval != null ? eval.pctCorrect() : 0;
+        }
+
         @Override
         public String toString() {
             if (eval != null) {
                 try {
-                    int numClasses = eval.confusionMatrix().length;
-                    if (numClasses == 2) {
-                        // Binary classification: show recall and F1 for each class
-                        double r0 = eval.recall(0) * 100;
-                        double r1 = eval.recall(1) * 100;
-                        double f1 = eval.fMeasure(1) * 100; // Usually index 1 is the 'Yes' or positive class
-                        return String.format("%s - Acc: %.1f%% | F1: %.1f%% | R(0): %.1f%% | R(1): %.1f%%",
-                            algorithm.getName(), eval.pctCorrect(), f1, r0, r1);
-                    } else {
-                        // Multi-class: show macro-average recall and F1
-                        double recallSum = 0;
-                        double f1Sum = 0;
-                        for (int i = 0; i < numClasses; i++) {
-                            recallSum += eval.recall(i);
-                            f1Sum += eval.fMeasure(i);
+                    double acc = getAccuracy();
+                    double f1 = getF1();
+                    String result = String.format("%s - Acc: %.1f%% | F1: %.1f%%", algorithm.getName(), acc, f1);
+
+                    // Dynamically check if THIS instance is the absolute best model in history
+                    boolean isBest = false;
+                    double roundedThisAcc = Math.round(acc * 10.0) / 10.0;
+                    double roundedThisF1 = Math.round(f1 * 10.0) / 10.0;
+
+                    if (roundedThisAcc >= 85.0 && roundedThisF1 >= 80.0 && WekaService.instance != null) {
+                        isBest = true;
+                        for (ResultEntry other : WekaService.instance.getTrainingHistory()) {
+                            if (other != this) {
+                                double roundedOtherAcc = Math.round(other.getAccuracy() * 10.0) / 10.0;
+                                double roundedOtherF1 = Math.round(other.getF1() * 10.0) / 10.0;
+                                if (roundedOtherAcc >= 85.0 && roundedOtherF1 > roundedThisF1) {
+                                    isBest = false;
+                                    break;
+                                }
+                            }
                         }
-                        double macroRecall = (recallSum / numClasses) * 100;
-                        double macroF1 = (f1Sum / numClasses) * 100;
-                        return String.format("%s - Acc: %.1f%% | F1: %.1f%% | Macro Recall: %.1f%%",
-                            algorithm.getName(), eval.pctCorrect(), macroF1, macroRecall);
                     }
+                    
+                    if (isBest) {
+                        result += " \uD83C\uDFC6"; // Trophy emoji for best model (mirrored thumbs up not standard)
+                    }
+                    return result;
                 } catch (Exception e) {
                     return String.format("%s - Acc: %.1f%%", algorithm.getName(), eval.pctCorrect());
                 }
@@ -81,6 +106,7 @@ public class WekaService {
         }
     }
 
+    public static WekaService instance;
     private final javafx.collections.ObservableList<ResultEntry> trainingHistory = javafx.collections.FXCollections.observableArrayList();
 
     public javafx.collections.ObservableList<ResultEntry> getTrainingHistory() {

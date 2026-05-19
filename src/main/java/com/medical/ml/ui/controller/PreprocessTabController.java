@@ -14,13 +14,28 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.FileChooser;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.Stage;
+import javafx.stage.Modality;
+import javafx.scene.Scene;
+import javafx.scene.layout.VBox;
+import javafx.scene.layout.HBox;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.paint.Color;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.application.Platform;
 import org.springframework.stereotype.Component;
 import weka.core.Attribute;
 import weka.core.Instances;
 import com.medical.ml.dto.PreprocessingStep;
 
 import java.io.File;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.*;
+import java.util.Collections;
 
 @Component
 public class PreprocessTabController {
@@ -140,82 +155,267 @@ public class PreprocessTabController {
         
         List<File> selectedFiles = fileChooser.showOpenMultipleDialog(txtRelationName.getScene().getWindow());
         if (selectedFiles != null && !selectedFiles.isEmpty()) {
-            
-            boolean appendMode = false;
-            if (wekaService.getOriginalData() != null) {
-                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                alert.setTitle("Merge Data Confirmation");
-                alert.setHeaderText("There is already data loaded in memory. Do you want to Append the new file(s) or Replace the existing data?");
+            // Ask user in English if they want to clean the dataset
+            Alert cleanAlert = new Alert(Alert.AlertType.CONFIRMATION);
+            cleanAlert.setTitle("Data Preprocessing");
+            cleanAlert.setHeaderText("Run Data Cleaning Pipeline?");
+            cleanAlert.setContentText("Do you want to run the automatic data cleaning/preprocessing pipeline for this dataset first?");
+
+            ButtonType btnYes = new ButtonType("Yes");
+            ButtonType btnNo = new ButtonType("No");
+            cleanAlert.getButtonTypes().setAll(btnYes, btnNo);
+
+            Optional<ButtonType> cleanResult = cleanAlert.showAndWait();
+            if (cleanResult.isPresent() && cleanResult.get() == btnYes) {
+                // User wants cleaning. Let them decide where to place the cleaned data
+                DirectoryChooser dirChooser = new DirectoryChooser();
+                dirChooser.setTitle("Select Output Directory for Cleaned Data");
                 
-                ButtonType btnAppend = new ButtonType("Append");
-                ButtonType btnReplace = new ButtonType("Replace");
-                ButtonType btnCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
-                
-                alert.getButtonTypes().setAll(btnAppend, btnReplace, btnCancel);
-                
-                Optional<ButtonType> result = alert.showAndWait();
-                if (result.isPresent() && result.get() == btnCancel) {
-                    return;
+                // Try to set initial directory to dataset/ folder in project root if exists
+                File defaultDir = new File(System.getProperty("user.dir"), "dataset");
+                if (defaultDir.exists() && defaultDir.isDirectory()) {
+                    dirChooser.setInitialDirectory(defaultDir);
                 }
-                appendMode = (result.isPresent() && result.get() == btnAppend);
+                
+                File outputDir = dirChooser.showDialog(txtRelationName.getScene().getWindow());
+                if (outputDir != null) {
+                    // Launch beautiful premium progress window and execute pipeline
+                    showCleaningProgressWindow(selectedFiles.get(0), outputDir);
+                    return; // Intercept normal loading flow
+                }
             }
-            final boolean finalAppendMode = appendMode;
+
+            // If No or Cancel, keep original behavior and load raw files directly
+            loadRawFiles(selectedFiles);
+        }
+    }
+
+    private void loadRawFiles(List<File> selectedFiles) {
+        boolean appendMode = false;
+        if (wekaService.getOriginalData() != null) {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Merge Data Confirmation");
+            alert.setHeaderText("There is already data loaded in memory. Do you want to Append the new file(s) or Replace the existing data?");
             
-            try {
-                mainController.setStatus("Reading file(s)... This may take a while.");
-                mainController.setProgressVisible(true);
-                
-                // Build a dynamic relation name from the actual files loaded
-                StringBuilder relationNameBuilder = new StringBuilder();
-                if (selectedFiles.size() > 1) {
-                    relationNameBuilder.append("Merged (").append(selectedFiles.size()).append(" files): ");
-                }
-                for (int i=0; i<selectedFiles.size(); i++) {
-                    relationNameBuilder.append(selectedFiles.get(i).getName());
-                    if (i < selectedFiles.size() - 1) relationNameBuilder.append(", ");
-                }
-                final String finalRelationName = relationNameBuilder.toString();
-                
-                javafx.concurrent.Task<Instances> loadTask = new javafx.concurrent.Task<Instances>() {
-                    @Override
-                    protected Instances call() throws Exception {
-                        Instances data;
-                        if (finalAppendMode) {
-                            data = DataLoaderUtil.mergeInstancesWithFiles(wekaService.getOriginalData(), selectedFiles);
-                        } else {
-                            data = DataLoaderUtil.mergeCSVFiles(selectedFiles);
-                        }
-                        
-                        if (data != null) {
-                            data.setRelationName(finalRelationName);
-                        }
-                        // Convert Strings inside the background task instead of setOriginalData
-                        // to avoid blocking the UI
-                        wekaService.setOriginalData(data);
-                        return wekaService.getOriginalData();
+            ButtonType btnAppend = new ButtonType("Append");
+            ButtonType btnReplace = new ButtonType("Replace");
+            ButtonType btnCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+            
+            alert.getButtonTypes().setAll(btnAppend, btnReplace, btnCancel);
+            
+            Optional<ButtonType> result = alert.showAndWait();
+            if (result.isPresent() && result.get() == btnCancel) {
+                return;
+            }
+            appendMode = (result.isPresent() && result.get() == btnAppend);
+        }
+        final boolean finalAppendMode = appendMode;
+        
+        try {
+            mainController.setStatus("Reading file(s)... This may take a while.");
+            mainController.setProgressVisible(true);
+            
+            StringBuilder relationNameBuilder = new StringBuilder();
+            if (selectedFiles.size() > 1) {
+                relationNameBuilder.append("Merged (").append(selectedFiles.size()).append(" files): ");
+            }
+            for (int i=0; i<selectedFiles.size(); i++) {
+                relationNameBuilder.append(selectedFiles.get(i).getName());
+                if (i < selectedFiles.size() - 1) relationNameBuilder.append(", ");
+            }
+            final String finalRelationName = relationNameBuilder.toString();
+            
+            javafx.concurrent.Task<Instances> loadTask = new javafx.concurrent.Task<Instances>() {
+                @Override
+                protected Instances call() throws Exception {
+                    Instances data;
+                    if (finalAppendMode) {
+                        data = DataLoaderUtil.mergeInstancesWithFiles(wekaService.getOriginalData(), selectedFiles);
+                    } else {
+                        data = DataLoaderUtil.mergeCSVFiles(selectedFiles);
                     }
-                };
+                    
+                    if (data != null) {
+                        data.setRelationName(finalRelationName);
+                    }
+                    wekaService.setOriginalData(data);
+                    return wekaService.getOriginalData();
+                }
+            };
 
-                loadTask.setOnSucceeded(e -> {
-                    mainController.setProgressVisible(false);
-                    refreshUI();
-                    mainController.setStatus("Welcome to the Weka Explorer");
+            loadTask.setOnSucceeded(e -> {
+                mainController.setProgressVisible(false);
+                refreshUI();
+                mainController.setStatus("Welcome to the Weka Explorer");
+            });
+
+            loadTask.setOnFailed(e -> {
+                mainController.setProgressVisible(false);
+                Throwable exp = loadTask.getException();
+                exp.printStackTrace();
+                showAlert("Error", "Could not load file: " + exp.getMessage() + "\nIf OutOfMemoryError, your dataset has too many unique string values for auto-conversion.");
+                mainController.setStatus("Error reading file.");
+            });
+
+            new Thread(loadTask).start();
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert("Error", "Failed to start loading thread.");
+        }
+    }
+
+    private void showCleaningProgressWindow(File inputFile, File outputDir) {
+        Stage stage = new Stage();
+        stage.initOwner(txtRelationName.getScene().getWindow());
+        stage.initModality(Modality.APPLICATION_MODAL);
+        stage.setTitle("Data Preprocessing Progress");
+
+        VBox root = new VBox(15);
+        root.setPadding(new Insets(15));
+        // Match premium light theme background styling
+        root.setStyle("-fx-background-color: #F3F4F6;");
+
+        Label titleLabel = new Label("DATA CLEANING PIPELINE PROGRESS");
+        titleLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
+        titleLabel.setTextFill(Color.web("#3B82F6"));
+
+        ProgressBar progressBar = new ProgressBar(0);
+        progressBar.setMaxWidth(Double.MAX_VALUE);
+        progressBar.setPrefHeight(15);
+        progressBar.setStyle("-fx-accent: #3B82F6;");
+
+        TextArea logArea = new TextArea();
+        logArea.setEditable(false);
+        logArea.setPrefHeight(300);
+        // Styled premium terminal look
+        logArea.setStyle("-fx-control-inner-background: #F9FAFB; -fx-text-fill: #1F2937; -fx-font-family: 'Consolas'; -fx-font-size: 11px; -fx-border-color: #D1D5DB;");
+
+        Button btnClose = new Button("Close");
+        btnClose.setDisable(true);
+        btnClose.setPrefWidth(100);
+        btnClose.setStyle("-fx-background-color: #E5E7EB; -fx-text-fill: #1F2937; -fx-font-weight: bold; -fx-border-color: #D1D5DB;");
+        btnClose.setOnAction(e -> stage.close());
+
+        HBox btnBox = new HBox(btnClose);
+        btnBox.setAlignment(Pos.CENTER_RIGHT);
+
+        root.getChildren().addAll(titleLabel, progressBar, logArea, btnBox);
+
+        Scene scene = new Scene(root, 650, 430);
+        stage.setScene(scene);
+        stage.show();
+
+        // Run process in background thread
+        Thread processThread = new Thread(() -> {
+            try {
+                // Execute pipeline script
+                // Execute pipeline script with -u for unbuffered stdout so progress updates live
+                ProcessBuilder pb = new ProcessBuilder(
+                    "python",
+                    "-u",
+                    "data_preprocessing_pipeline.py", 
+                    inputFile.getAbsolutePath(), 
+                    outputDir.getAbsolutePath()
+                );
+                pb.redirectErrorStream(true);
+                Process process = pb.start();
+
+                BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), "UTF-8"));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    final String finalLine = line;
+                    Platform.runLater(() -> {
+                        logArea.appendText(finalLine + "\n");
+                        // Parse steps for progress bar
+                        if (finalLine.contains("Step 1:")) progressBar.setProgress(0.15);
+                        else if (finalLine.contains("Step 2:")) progressBar.setProgress(0.30);
+                        else if (finalLine.contains("Step 3:")) progressBar.setProgress(0.45);
+                        else if (finalLine.contains("Step 4:")) progressBar.setProgress(0.60);
+                        else if (finalLine.contains("Step 5:")) progressBar.setProgress(0.75);
+                        else if (finalLine.contains("Step 6:")) progressBar.setProgress(0.85);
+                        else if (finalLine.contains("Step 7:")) progressBar.setProgress(0.95);
+                        else if (finalLine.contains("[Done]")) progressBar.setProgress(1.0);
+                    });
+                }
+
+                int exitCode = process.waitFor();
+                Platform.runLater(() -> {
+                    btnClose.setDisable(false);
+                    if (exitCode == 0) {
+                        progressBar.setProgress(1.0);
+                        logArea.appendText("\n[Done] Data Preprocessing Pipeline executed successfully!\n");
+                        
+                        // Ask user if they want to load ESUR.csv
+                        Alert loadAlert = new Alert(Alert.AlertType.CONFIRMATION);
+                        loadAlert.setTitle("Load Cleaned Dataset");
+                        loadAlert.setHeaderText("Preprocessing complete!");
+                        loadAlert.setContentText("Do you want to load the cleaned department dataset (ESUR.csv) into the workspace now?");
+                        
+                        ButtonType loadYes = new ButtonType("Yes");
+                        ButtonType loadNo = new ButtonType("No");
+                        loadAlert.getButtonTypes().setAll(loadYes, loadNo);
+                        
+                        Optional<ButtonType> loadRes = loadAlert.showAndWait();
+                        if (loadRes.isPresent() && loadRes.get() == loadYes) {
+                            File cleanedFile = new File(outputDir, "ESUR.csv");
+                            if (cleanedFile.exists()) {
+                                loadCleanedFile(cleanedFile);
+                            } else {
+                                showAlert("Error", "Could not locate 'ESUR.csv' in the output folder.");
+                            }
+                        }
+                    } else {
+                        logArea.appendText("\n[Error] Pipeline failed with exit code: " + exitCode + "\n");
+                    }
                 });
-
-                loadTask.setOnFailed(e -> {
-                    mainController.setProgressVisible(false);
-                    Throwable exp = loadTask.getException();
-                    exp.printStackTrace();
-                    showAlert("Error", "Could not load file: " + exp.getMessage() + "\nIf OutOfMemoryError, your dataset has too many unique string values for auto-conversion.");
-                    mainController.setStatus("Error reading file.");
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    btnClose.setDisable(false);
+                    logArea.appendText("\nException occurred: " + ex.getMessage() + "\n");
                 });
-
-                new Thread(loadTask).start();
-                
-            } catch (Exception e) {
-                e.printStackTrace();
-                showAlert("Error", "Failed to start loading thread.");
             }
+        });
+        processThread.setDaemon(true);
+        processThread.start();
+    }
+
+    private void loadCleanedFile(File file) {
+        try {
+            mainController.setStatus("Reading cleaned file... This may take a while.");
+            mainController.setProgressVisible(true);
+            
+            javafx.concurrent.Task<Instances> loadTask = new javafx.concurrent.Task<Instances>() {
+                @Override
+                protected Instances call() throws Exception {
+                    List<File> files = Collections.singletonList(file);
+                    Instances data = DataLoaderUtil.mergeCSVFiles(files);
+                    if (data != null) {
+                        data.setRelationName(file.getName());
+                    }
+                    wekaService.setOriginalData(data);
+                    return wekaService.getOriginalData();
+                }
+            };
+
+            loadTask.setOnSucceeded(e -> {
+                mainController.setProgressVisible(false);
+                refreshUI();
+                mainController.setStatus("Cleaned data successfully loaded!");
+            });
+
+            loadTask.setOnFailed(e -> {
+                mainController.setProgressVisible(false);
+                Throwable exp = loadTask.getException();
+                exp.printStackTrace();
+                showAlert("Error", "Could not load file: " + exp.getMessage());
+                mainController.setStatus("Error reading file.");
+            });
+
+            new Thread(loadTask).start();
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert("Error", "Failed to start loading thread.");
         }
     }
 
@@ -344,14 +544,16 @@ public class PreprocessTabController {
     @FXML
     private void handleChooseFilter() {
         List<String> choices = Arrays.asList(
-            "ReplaceMissingValues",
             "NumericToNominal",
             "ClassBalancer"
         );
         ChoiceDialog<String> dialog = new ChoiceDialog<>(choices.get(0), choices);
         dialog.setTitle("Select Preprocessing Tool");
         dialog.setHeaderText("Choose a tool for data preprocessing");
-        dialog.showAndWait().ifPresent(choice -> txtCurrentFilter.setText(choice));
+        dialog.showAndWait().ifPresent(choice -> {
+            txtCurrentFilter.setText(choice);
+            handleApplyFilter(); // Automatically apply
+        });
     }
 
     @FXML

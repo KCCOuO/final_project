@@ -68,6 +68,7 @@ public class DataLoaderUtil {
 
         java.util.Map<String, java.util.List<String>> nominalValuesMap = new java.util.LinkedHashMap<>();
         java.util.Map<String, Boolean> isNumericMap = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Boolean> isStringMap = new java.util.LinkedHashMap<>();
         java.util.List<String> attributeOrder = new java.util.ArrayList<>();
 
         // Phase 1: Analyze structure and merge nominal labels
@@ -81,17 +82,18 @@ public class DataLoaderUtil {
                 }
                 
                 if (attr.isNumeric()) {
-                    isNumericMap.put(name, true);
-                } else if (attr.isNominal() || attr.isString()) {
+                    isNumericMap.putIfAbsent(name, true);
+                } else if (attr.isString()) {
                     isNumericMap.put(name, false);
+                    isStringMap.put(name, true);
+                } else if (attr.isNominal()) {
+                    isNumericMap.put(name, false);
+                    isStringMap.put(name, false);
                     java.util.List<String> labels = nominalValuesMap.computeIfAbsent(name, k -> new java.util.ArrayList<>());
-                    // For string attributes, numValues might be 0, but we'll try to extract them
-                    if (attr.isNominal()) {
-                        for (int n = 0; n < attr.numValues(); n++) {
-                            String val = attr.value(n);
-                            if (!labels.contains(val)) {
-                                labels.add(val);
-                            }
+                    for (int n = 0; n < attr.numValues(); n++) {
+                        String val = attr.value(n);
+                        if (!labels.contains(val)) {
+                            labels.add(val);
                         }
                     }
                 }
@@ -103,6 +105,8 @@ public class DataLoaderUtil {
         for (String attrName : attributeOrder) {
             if (isNumericMap.getOrDefault(attrName, true)) {
                 attributes.add(new weka.core.Attribute(attrName));
+            } else if (isStringMap.getOrDefault(attrName, false)) {
+                attributes.add(new weka.core.Attribute(attrName, (java.util.List<String>) null));
             } else {
                 java.util.List<String> vals = nominalValuesMap.get(attrName);
                 if (vals == null) vals = new java.util.ArrayList<>();
@@ -125,16 +129,45 @@ public class DataLoaderUtil {
                     
                     if (sourceAttr != null && !srcInst.isMissing(sourceAttr)) {
                         if (targetAttr.isNumeric()) {
-                            newInst.setValue(targetAttr, srcInst.value(sourceAttr));
-                        } else {
-                            String valName = srcInst.stringValue(sourceAttr);
-                            if (targetAttr.indexOfValue(valName) != -1) {
-                                newInst.setValue(targetAttr, valName);
+                            if (sourceAttr.isNumeric()) {
+                                newInst.setValue(targetAttr, srcInst.value(sourceAttr));
                             } else {
-                                // If valName somehow missing from target nominal definition, add it!
-                                // Note: weka doesn't allow adding values to nominal after creation easily,
-                                // but we gathered all values in Phase 1, so this shouldn't happen.
-                                newInst.setValue(targetAttr, valName);
+                                // Fallback: parse string to numeric or fallback to index
+                                try {
+                                    newInst.setValue(targetAttr, Double.parseDouble(srcInst.stringValue(sourceAttr)));
+                                } catch (Exception ex) {
+                                    newInst.setValue(targetAttr, srcInst.value(sourceAttr));
+                                }
+                            }
+                        } else if (targetAttr.isString() || targetAttr.isNominal()) {
+                            String valName;
+                            if (sourceAttr.isNumeric()) {
+                                double val = srcInst.value(sourceAttr);
+                                // Format clean integer strings to avoid "1.0" for discrete categories
+                                if (val == (long) val) {
+                                    valName = String.valueOf((long) val);
+                                } else {
+                                    valName = String.valueOf(val);
+                                }
+                            } else {
+                                valName = srcInst.stringValue(sourceAttr);
+                            }
+
+                            if (targetAttr.isString()) {
+                                newInst.setValue(targetAttr, targetAttr.addStringValue(valName));
+                            } else {
+                                int valIdx = targetAttr.indexOfValue(valName);
+                                if (valIdx != -1) {
+                                    newInst.setValue(targetAttr, valIdx);
+                                } else {
+                                    // Try dynamically adding it, fallback to setting missing to avoid crash
+                                    try {
+                                        int newIdx = targetAttr.addStringValue(valName);
+                                        newInst.setValue(targetAttr, newIdx);
+                                    } catch (Exception ex) {
+                                        newInst.setMissing(targetAttr);
+                                    }
+                                }
                             }
                         }
                     } else {
