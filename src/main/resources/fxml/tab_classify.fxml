@@ -23,7 +23,7 @@
                 <VBox spacing="8" style="-fx-translate-y: -15;">
                     <fx:define><ToggleGroup fx:id="tgTestOptions"/></fx:define>
                     
-                    <HBox spacing="5" alignment="CENTER_LEFT">
+                    <HBox spacing="5" alignment="CENTER_LEFT" visible="false" managed="false">
                         <RadioButton fx:id="rbSuppliedTest" text="Supplied test set" toggleGroup="$tgTestOptions"/>
                         <Button text="Set..." disable="true" style="-fx-font-size: 10px;"/>
                     </HBox>

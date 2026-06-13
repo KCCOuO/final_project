@@ -10,13 +10,7 @@
     <HBox spacing="10" alignment="CENTER_LEFT">
         <Button text="Open Dataset (CSV)..." onAction="#handleOpenFile" prefWidth="150" style="-fx-font-weight: bold;"/>
         <Region HBox.hgrow="ALWAYS" />
-        <Button text="Save Merged Data..." onAction="#handleSaveCSV" prefWidth="150" style="-fx-base: #e1f5fe;"/>
-    </HBox>
-
-    <HBox spacing="10" alignment="CENTER_LEFT" style="-fx-border-color: #ccc; -fx-padding: 8;">
-        <Label text="Filter" style="-fx-font-weight: bold;"/>
-        <Button text="Choose" onAction="#handleChooseFilter"/>
-        <TextField fx:id="txtCurrentFilter" text="None" editable="false" HBox.hgrow="ALWAYS" style="-fx-background-color: #fff; -fx-border-color: #ccc;"/>
+        <!-- <Button text="Save Merged Data..." onAction="#handleSaveCSV" prefWidth="150" style="-fx-base: #e1f5fe;"/> -->
     </HBox>
 
     <SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.4">
@@ -85,10 +79,13 @@
                 </VBox>
                 
                 <VBox style="-fx-border-color: #ccc; -fx-padding: 5;" VBox.vgrow="ALWAYS">
-                     <BarChart fx:id="chartHistogram" VBox.vgrow="ALWAYS" legendVisible="false" animated="false" title="Histogram">
-                         <xAxis><CategoryAxis fx:id="xAxis" /></xAxis>
-                         <yAxis><NumberAxis fx:id="yAxis" /></yAxis>
-                     </BarChart>
+                    <StackPane VBox.vgrow="ALWAYS">
+                        <BarChart fx:id="chartHistogram" legendVisible="false" animated="false" title="Histogram">
+                            <xAxis><CategoryAxis fx:id="xAxis" /></xAxis>
+                            <yAxis><NumberAxis fx:id="yAxis" /></yAxis>
+                        </BarChart>
+                        <Label fx:id="lblHistogramNotSupported" text="不支援此資料類型的 Histogram" visible="false" style="-fx-font-size: 14px; -fx-text-fill: gray;"/>
+                    </StackPane>
                 </VBox>
             </SplitPane>
         </VBox>

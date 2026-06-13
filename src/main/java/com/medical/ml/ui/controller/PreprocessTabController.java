@@ -40,7 +40,6 @@ import java.util.Collections;
 @Component
 public class PreprocessTabController {
 
-    @FXML private TextField txtCurrentFilter;
     @FXML private TextArea txtRelationName;
     @FXML private Label lblInstancesCount;
     @FXML private Label lblAttributesCount;
@@ -63,6 +62,7 @@ public class PreprocessTabController {
     @FXML private TableColumn<StatRow, String> colStatsWeight;
 
     @FXML private BarChart<String, Number> chartHistogram;
+    @FXML private Label lblHistogramNotSupported;
 
     private final WekaService wekaService;
     private final MainController mainController;
@@ -194,20 +194,27 @@ public class PreprocessTabController {
         boolean appendMode = false;
         if (wekaService.getOriginalData() != null) {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Merge Data Confirmation");
-            alert.setHeaderText("There is already data loaded in memory. Do you want to Append the new file(s) or Replace the existing data?");
+            alert.setTitle("Load Data Confirmation");
+            alert.setHeaderText("There is already data loaded in memory. Do you want to Replace the existing data?");
             
-            ButtonType btnAppend = new ButtonType("Append");
-            ButtonType btnReplace = new ButtonType("Replace");
-            ButtonType btnCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+            // Using OTHER data type to prevent OS-specific right/left anchoring
+            ButtonType btnCancel = new ButtonType("Cancel", ButtonBar.ButtonData.OTHER);
+            ButtonType btnReplace = new ButtonType("Replace", ButtonBar.ButtonData.OTHER);
             
-            alert.getButtonTypes().setAll(btnAppend, btnReplace, btnCancel);
+            alert.getButtonTypes().setAll(btnCancel, btnReplace);
+            
+            // Attempt to center the buttons in the dialog
+            alert.getDialogPane().applyCss();
+            javafx.scene.Node btnBar = alert.getDialogPane().lookup(".button-bar");
+            if (btnBar instanceof javafx.scene.control.ButtonBar) {
+                btnBar.setStyle("-fx-alignment: center;");
+            }
             
             Optional<ButtonType> result = alert.showAndWait();
             if (result.isPresent() && result.get() == btnCancel) {
                 return;
             }
-            appendMode = (result.isPresent() && result.get() == btnAppend);
+            // appendMode defaults to false, keeping only the Replace logic
         }
         final boolean finalAppendMode = appendMode;
         
@@ -237,6 +244,12 @@ public class PreprocessTabController {
                     
                     if (data != null) {
                         data.setRelationName(finalRelationName);
+                        if (data.classIndex() == -1) {
+                            data.setClassIndex(data.numAttributes() - 1);
+                        }
+                        weka.filters.supervised.instance.ClassBalancer cb = new weka.filters.supervised.instance.ClassBalancer();
+                        cb.setInputFormat(data);
+                        data = weka.filters.Filter.useFilter(data, cb);
                     }
                     wekaService.setOriginalData(data);
                     return wekaService.getOriginalData();
@@ -392,6 +405,12 @@ public class PreprocessTabController {
                     Instances data = DataLoaderUtil.mergeCSVFiles(files);
                     if (data != null) {
                         data.setRelationName(file.getName());
+                        if (data.classIndex() == -1) {
+                            data.setClassIndex(data.numAttributes() - 1);
+                        }
+                        weka.filters.supervised.instance.ClassBalancer cb = new weka.filters.supervised.instance.ClassBalancer();
+                        cb.setInputFormat(data);
+                        data = weka.filters.Filter.useFilter(data, cb);
                     }
                     wekaService.setOriginalData(data);
                     return wekaService.getOriginalData();
@@ -507,8 +526,55 @@ public class PreprocessTabController {
             for (StatRow row : stats) {
                 series.getData().add(new XYChart.Data<>(row.getLabel(), Double.parseDouble(row.getCount())));
             }
+            chartHistogram.getData().add(series);
+            chartHistogram.setVisible(true);
+            if (lblHistogramNotSupported != null) lblHistogramNotSupported.setVisible(false);
+        } else if (attr.isNumeric()) {
+            int numBins = 10;
+            // Get the calculated min and max from the stats section
+            double min = Double.MAX_VALUE;
+            double max = -Double.MAX_VALUE;
+            int count = 0;
+            for (int i = 0; i < total; i++) {
+                if (!data.instance(i).isMissing(attr)) {
+                    double v = data.instance(i).value(attr);
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                    count++;
+                }
+            }
+
+            if (count > 0 && max > min) {
+                int[] binCounts = new int[numBins];
+                double binSize = (max - min) / numBins;
+                
+                for (int i = 0; i < total; i++) {
+                    if (!data.instance(i).isMissing(attr)) {
+                        double v = data.instance(i).value(attr);
+                        int binIndex = (int) ((v - min) / binSize);
+                        if (binIndex >= numBins) binIndex = numBins - 1;
+                        if (binIndex < 0) binIndex = 0;
+                        binCounts[binIndex]++;
+                    }
+                }
+                
+                for (int i = 0; i < numBins; i++) {
+                    double binStart = min + i * binSize;
+                    double binEnd = min + (i + 1) * binSize;
+                    String label = String.format("%.1f~%.1f", binStart, binEnd);
+                    series.getData().add(new XYChart.Data<>(label, binCounts[i]));
+                }
+            } else if (count > 0 && max == min) {
+                series.getData().add(new XYChart.Data<>(String.format("%.1f", min), count));
+            }
+
+            chartHistogram.getData().add(series);
+            chartHistogram.setVisible(true);
+            if (lblHistogramNotSupported != null) lblHistogramNotSupported.setVisible(false);
+        } else {
+            chartHistogram.setVisible(false);
+            if (lblHistogramNotSupported != null) lblHistogramNotSupported.setVisible(true);
         }
-        chartHistogram.getData().add(series);
     }
 
     @FXML private void handleSelectAllAttr() { for (AttrRow row : attributeRows) row.setSelected(true); }
@@ -541,87 +607,7 @@ public class PreprocessTabController {
         }
     }
 
-    @FXML
-    private void handleChooseFilter() {
-        List<String> choices = Arrays.asList(
-            "NumericToNominal",
-            "ClassBalancer"
-        );
-        ChoiceDialog<String> dialog = new ChoiceDialog<>(choices.get(0), choices);
-        dialog.setTitle("Select Preprocessing Tool");
-        dialog.setHeaderText("Choose a tool for data preprocessing");
-        dialog.showAndWait().ifPresent(choice -> {
-            txtCurrentFilter.setText(choice);
-            handleApplyFilter(); // Automatically apply
-        });
-    }
 
-    @FXML
-    private void handleApplyFilter() {
-        String filterName = txtCurrentFilter.getText();
-        if (filterName == null || filterName.equals("None") || wekaService.getOriginalData() == null) return;
-        
-        mainController.setStatus("Filtering... This may take a while.");
-        mainController.setProgressVisible(true);
-
-        // Get selected attributes
-        List<String> selectedIndices = new ArrayList<>();
-        for (int i = 0; i < attributeRows.size(); i++) {
-            if (attributeRows.get(i).isSelected()) {
-                selectedIndices.add(String.valueOf(i + 1));
-            }
-        }
-        final String rangeList = selectedIndices.isEmpty() ? "first-last" : String.join(",", selectedIndices);
-
-        javafx.concurrent.Task<Void> task = new javafx.concurrent.Task<>() {
-            @Override
-            protected Void call() throws Exception {
-                Instances data = wekaService.getOriginalData();
-                weka.filters.Filter filter = null;
-
-                if (filterName.contains("ReplaceMissingValues")) {
-                    filter = new weka.filters.unsupervised.attribute.ReplaceMissingValues();
-                } else if (filterName.contains("NumericToNominal")) {
-                    weka.filters.unsupervised.attribute.NumericToNominal ntn = new weka.filters.unsupervised.attribute.NumericToNominal();
-                    ntn.setAttributeIndices(rangeList);
-                    filter = ntn;
-                } else if (filterName.contains("Standardize")) {
-                    filter = new weka.filters.unsupervised.attribute.Standardize();
-                } else if (filterName.contains("Normalize")) {
-                    filter = new weka.filters.unsupervised.attribute.Normalize();
-                } else if (filterName.contains("ClassBalancer")) {
-                    filter = new weka.filters.supervised.instance.ClassBalancer();
-                }
-
-                if (filter != null) {
-                    if (data.classIndex() == -1) {
-                        data.setClassIndex(data.numAttributes() - 1);
-                    }
-                    filter.setInputFormat(data);
-                    Instances res = weka.filters.Filter.useFilter(data, filter);
-                    // Do not block UI with setOriginalData logic
-                    wekaService.setOriginalData(res);
-                }
-                return null;
-            }
-        };
-
-        task.setOnSucceeded(e -> {
-            mainController.setProgressVisible(false);
-            refreshUI();
-            mainController.setStatus("Filter applied.");
-        });
-
-        task.setOnFailed(e -> {
-            mainController.setProgressVisible(false);
-            Throwable exp = task.getException();
-            exp.printStackTrace();
-            showAlert("Filter Error", "Failed to apply filter: " + exp.getMessage() + "\n(Tip: For NumericToNominal on huge datasets, be sure to select specific low-cardinality attributes from the list below BEFORE applying!)");
-            mainController.setStatus("Error applying filter.");
-        });
-
-        new Thread(task).start();
-    }
 
     private void showAlert(String title, String msg) {
         Alert a = new Alert(Alert.AlertType.ERROR);

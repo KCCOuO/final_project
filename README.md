@@ -1,198 +1,68 @@
-# 急診手術需求預測系統 (72-Hour Surgical Prediction)
+# 72-Hour Emergency Surgery Prediction System
 
-使用 **Java 22 + Spring Boot 3.2 + JavaFX 17 + Weka 3.8.6**，根據病患到院時的臨床資料，預測其 **3 天（72 小時）內是否需要手術**。
+本專案為「急診手術需求預測系統」(72-Hour Surgical Prediction)，提供一站式的資料前處理、機器學習模型訓練與病患預測工作流程。透過分析病患入院時的臨床資料，預測其未來 72 小時內是否需要接受手術治療，以輔助醫療人員進行更精準的醫療決策與資源分配。
 
-提供完整的 **資料前處理 → 模型訓練 → 病患預測** 一站式 GUI 工作流程，專為醫護人員設計，介面全繁體中文。
+## 系統架構與技術選型
 
----
+本系統採多層次架構設計，結合現代化桌面端技術與強大的機器學習引擎：
 
-## 專案結構
+- **核心語言**：Java 22 (建議 Java 17+) / Python 3
+- **機器學習引擎**：Weka 3.8.6 (Java) / Scikit-learn (Python)
+- **桌面使用者介面**：JavaFX 17 (Java) / Tkinter (Python)
+- **後端與依賴管理**：Spring Boot 3.2.3, Maven
+- **資料處理**：Pandas, NumPy (Python)
 
-```
-72hourPrediction/
-├── pom.xml                                         ← Maven 相依設定
-├── README.md
-└── src/main/
-    ├── java/com/medical/ml/
-    │   ├── Launcher.java                           ← 程式進入點
-    │   ├── JavaFXApplication.java                  ← JavaFX Application 啟動器
-    │   ├── MedicalMLApplication.java               ← Spring Boot 啟動設定
-    │   ├── PrimaryStageInitializer.java            ← 主視窗初始化 + FXML 載入
-    │   ├── StageReadyEvent.java                    ← Spring Event（視窗就緒通知）
-    │   │
-    │   ├── dto/
-    │   │   ├── PreprocessOptions.java              ← 前處理參數 DTO
-    │   │   └── PreprocessingStep.java              ← 前處理步驟定義
-    │   │
-    │   ├── ml/
-    │   │   ├── algorithm/
-    │   │   │   ├── MLAlgorithm.java                ← 演算法共用介面
-    │   │   │   ├── J48Algo.java                    ← C4.5 決策樹
-    │   │   │   ├── RandomForestAlgo.java           ← 隨機森林（200 棵樹）
-    │   │   │   ├── LogisticAlgo.java               ← 邏輯回歸
-    │   │   │   ├── NaiveBayesAlgo.java             ← 樸素貝氏
-    │   │   │   ├── BaggingAlgo.java                ← Bagging 集成學習
-    │   │   │   └── AdaBoostAlgo.java               ← AdaBoost 集成學習
-    │   │   └── factory/
-    │   │       └── AlgorithmFactory.java           ← 演算法工廠（統一管理）
-    │   │
-    │   ├── service/
-    │   │   ├── WekaService.java                    ← 核心 Weka 服務（前處理 + 資料分割）
-    │   │   ├── SessionState.java                   ← 全域狀態管理（資料 + 模型）
-    │   │   ├── ExportService.java                  ← 模型匯出/匯入（.zip 封裝）
-    │   │   ├── PredictionService.java              ← 單筆預測服務
-    │   │   ├── BatchPredictionService.java         ← 批次預測服務
-    │   │   └── LoadModelService.java               ← 模型載入服務
-    │   │
-    │   ├── ui/controller/
-    │   │   ├── MainController.java                 ← 主介面控制器（狀態列）
-    │   │   ├── PreprocessTabController.java        ← 資料前處理分頁
-    │   │   ├── ClassifyTabController.java          ← 機器學習訓練分頁
-    │   │   └── PredictTabController.java           ← 病患預測分頁
-    │   │
-    │   └── util/
-    │       ├── DataLoaderUtil.java                 ← CSV 多檔合併載入工具
-    │       └── DataScanner.java                    ← 資料掃描工具
-    │
-    └── resources/
-        ├── application.properties                  ← Spring Boot 設定
-        ├── fxml/
-        │   ├── layout.fxml                         ← 主介面佈局
-        │   ├── tab_preprocess.fxml                 ← 前處理分頁 UI
-        │   ├── tab_classify.fxml                   ← 訓練分頁 UI
-        │   └── tab_predict.fxml                    ← 預測分頁 UI
-        └── styles/
-            └── styles.css                          ← 全域樣式表
-```
+## 核心功能模組
 
----
+### 1. 資料前處理管線 (Data Preprocessing Pipeline)
+由 Python 撰寫的資料處理模組（包含 CLI 與 GUI 版本 `data_preprocessing_gui.py`），提供強大且穩健的臨床資料標準化流程：
+- 支援 CSV 與 Excel 格式匯入。
+- 自動清理缺失值、標準化資料格式、移除不必要欄位（避免未來資訊 Data Leakage）。
+- 針對重要指標進行二元數值轉換（N/Y）。
+- 針對目標科別（如 ESUR）進行自動篩選，並以 80/20 比例進行 Stratified Train/Test Split 分層抽樣分割。
 
-## 環境需求
+### 2. 機器學習與模型評估 (Weka ML Engine)
+系統基於 Java/Spring Boot 與 Weka 引擎，支援多種經典演算法：
+- **決策樹 (J48 / C4.5)**：高可解釋性，臨床常用首選。
+- **隨機森林 (Random Forest)**：具備高度預測穩定性與泛化能力。
+- **邏輯迴歸 (Logistic Regression)**：可分析臨床特徵權重。
+- **模型評估**：提供 10-fold 交叉驗證 (Cross-validation)、訓練集評估與百分比拆分測試。專注於臨床上最關鍵的 **Recall (召回率)** 指標，確保能有效偵測出需要手術的高風險病患。
 
-| 工具       | 版本                      |
-|-----------|--------------------------|
-| Java JDK  | 22（建議 17 以上）         |
-| Maven     | 3.6 以上                  |
-| Weka      | 3.8.6（由 Maven 自動下載） |
-| JavaFX    | 17.0.10（由 Maven 自動下載）|
-| Spring Boot | 3.2.3                  |
+### 3. 模型預測與防護機制
+- **單筆與批次預測**：支援透過介面手動輸入單筆病患資料進行預測，或匯入大量 CSV 進行批次預測，並提供模型信心度 (Confidence)。
+- **Anti-OOM 保護**：自動偵測並移除高基數字串欄位（如病患 ID），防止記憶體溢出。
+- **模型持久化**：支援匯出與載入訓練好的模型 (.zip)，解決 Weka 反序列化目標特徵遺失的問題。
 
----
+## 執行與使用方式
 
-## 建置與執行
-
+### 資料前處理 (Python)
+確保已安裝必要的 Python 套件：
 ```bash
-# 1. 編譯專案
-mvn clean compile
-
-# 2. 透過 IDE 執行（推薦）
-#    執行 com.medical.ml.Launcher 作為主類別
-#    JVM 參數建議：-Xmx4g
-
-# 3. 或透過 Maven 打包後執行
-mvn package -DskipTests
-java -Xmx4g -jar target/medical-ml-desktop-0.0.1-SNAPSHOT.jar
+pip install pandas numpy scikit-learn
+```
+啟動前處理 GUI 介面：
+```bash
+python data_preprocessing_gui.py
 ```
 
----
-
-## 功能總覽
-
-### 📋 資料前處理（Preprocess）
-
-| 功能               | 說明                                                   |
-|-------------------|-------------------------------------------------------|
-| 多檔合併載入        | 支援同時匯入多個 `.csv` 檔案，自動合併並顯示各檔詳細統計   |
-| 智慧型態轉換        | 自動偵測並轉換字串型 → 名目型、數值目標 → 類別目標        |
-| 高基數欄位移除      | 自動移除 >100 種值的字串欄（如身分證字號）防止記憶體溢位    |
-| 前處理過濾器        | 補齊缺失數據 (ReplaceMissingValues)、類別權重平衡 (SMOTE) |
-| 目標欄位選擇        | 可自由選擇任意欄位作為預測目標                            |
-
-### 🧠 機器學習訓練（Classify）
-
-| 模型              | 說明                           | 特色               |
-|------------------|-------------------------------|-------------------|
-| J48 (C4.5)       | 決策樹分類器                    | 可解釋性高，醫學首選 |
-| Random Forest    | 200 棵決策樹集成學習             | 預測穩定，泛化能力強 |
-| Logistic Regression | 線性分類器                   | 可查看特徵影響係數   |
-| Naive Bayes      | 樸素貝氏分類                    | 高速，作為基準比較   |
-| Bagging          | Bootstrap 集成學習             | 降低過擬合          |
-| AdaBoost         | 自適應提升學習                   | 強化弱學習器        |
-
-**評估方式：**
-
-| 方式                 | 說明                          |
-|---------------------|------------------------------|
-| 全資料集訓練          | 用全部資料評估（易過擬合）       |
-| K-fold 交叉驗證      | 預設 10 折，最推薦的評估方式     |
-| 百分比拆分            | 自訂比例拆分訓練/測試集          |
-
-**模型清單顯示格式：**
+### 系統主程式 (Java)
+使用 Maven 進行編譯與打包：
+```bash
+mvn clean install
 ```
-J48 - Acc: 96.7% | R(0): 99.2% | R(1): 41.0%
+透過 Spring Boot 或 JavaFX Maven Plugin 啟動：
+```bash
+mvn spring-boot:run
 ```
-- `Acc`：整體準確率
-- `R(0)`：Class 0 召回率（如「未手術」的偵測率）
-- `R(1)`：Class 1 召回率（如「需手術」的偵測率）⚠️ **醫學上最關鍵的指標**
+或執行編譯後的 JAR 檔啟動桌面應用程式。
 
-### 🔮 病患預測（Predict）
+## 專案目錄結構
 
-| 功能                | 說明                                                             |
-|--------------------|------------------------------------------------------------------|
-| 模型來源選擇         | 下拉選單切換訓練歷史中的任意模型，或從本機載入 `.zip` 模型檔        |
-| 多模型對比面板       | 📊 以瀏覽器分頁方式同時檢視多個模型的完整分析報告，一鍵選用          |
-| 單筆預測            | 動態產生表單（根據模型欄位自動調整），彈出視窗顯示結果與模型信心度    |
-| 批次預測            | 匯入未知 CSV → 自動比對欄位 → 輸出包含預測結果與信心度的 CSV 檔案  |
+- `/src/main/java/com/medical/ml/`：Java 主程式與核心邏輯（Service, ML, UI Controllers）。
+- `/dataset/`：資料集存放目錄（包含原始資料與處理後資料）。
+- `data_preprocessing_pipeline.py`：Python 前處理腳本（CLI）。
+- `data_preprocessing_gui.py`：Python 前處理視覺化介面（GUI）。
+- `pom.xml`：Maven 專案設定檔。
 
----
-
-## 模型匯出格式
-
-匯出的 `.zip` 檔案包含：
-
-| 檔案              | 內容                           |
-|------------------|-------------------------------|
-| `model.model`    | 序列化的 Weka 分類器            |
-| `filter.model`   | 序列化的前處理過濾器             |
-| `header.arff`    | 訓練資料表頭（欄位結構定義）      |
-| `classIndex.txt` | 預測目標欄位索引（防止載入時遺失） |
-| `report.txt`     | 原始訓練分析報告（完整保存）      |
-
----
-
-## 預測輸出
-
-### 單筆預測
-
-```
-預測結果: 1
-模型信心度: 87.30%
-(信心度為模型對此預測的把握程度)
-```
-
-### 批次預測 CSV 輸出
-
-| 原始欄位1 | 原始欄位2 | ... | Predicted_OPwithin72hr | Confidence(%) |
-|----------|----------|-----|----------------------|---------------|
-| 75       | 1        | ... | 1                    | 87.30         |
-| 62       | 0        | ... | 0                    | 94.15         |
-
----
-
-## 防護機制
-
-| 機制                       | 說明                                                        |
-|---------------------------|-------------------------------------------------------------|
-| Anti-OOM 自動過濾          | 訓練前自動移除 >500 種值的高基數 Nominal 欄位，防止記憶體溢位   |
-| Class Index 持久化         | 匯出時強制保存目標索引，解決 Weka 原生反序列化後遺失的問題      |
-| 智慧欄位比對               | 批次預測時按欄位名稱配對，容忍來源資料的欄位順序與數量差異       |
-| String 屬性安全轉換         | 自動偵測低基數字串轉 Nominal，高基數字串直接移除               |
-
----
-
-## 注意事項
-
-- ⚠️ **洩漏欄位須排除**：手術時間、術後 ICD-10、住院手術碼等含未來資訊的欄位，須在前處理階段手動移除
-- ⚠️ **不平衡資料**：手術案例僅佔約 4.4%，建議使用 SMOTE 或類別權重平衡進行處理
-- ⚠️ **本系統僅供學術研究，不可直接用於臨床決策**
-- 💡 建議將 JVM 記憶體上限設為 4GB 以上（`-Xmx4g`），以應對大型醫療資料集
+## 臨床應用聲明
+本系統定位為決策輔助工具，預測結果（包含信心度）應視為臨床參考指標之一，**不可取代專業醫師的最終臨床診斷與決策**。
